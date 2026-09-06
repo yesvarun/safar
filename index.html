@@ -148,7 +148,7 @@ details summary{cursor:pointer;font-weight:700;padding:.4rem 0}
     <div id="map"></div>
     <div class="card" id="wxCard"></div>
     <div class="row">
-      <button class="gold" id="btnBuild" onclick="buildPlan()">Build my plan with Claude</button>
+      <button class="gold" id="btnBuild" onclick="buildPlan(false)">Build my plan with Claude</button>
     </div>
     <div id="planErr"></div>
     <div id="planOut"></div>
@@ -432,53 +432,52 @@ function renderPlanView(){
   const wx=S.wx||[];
   $('wxCard').innerHTML=wx.length?`<h3>Weather at ${S.dest.name} for your dates</h3><table>${wx.map(w=>`<tr><td>${fmtDate(w.date)}</td><td>${w.code}</td><td class="num">${Math.round(w.min)}–${Math.round(w.max)}°C</td><td class="num">${w.rain}% rain</td></tr>`).join('')}</table>`
     :`<h3>Weather</h3><p class="muted">${S.dest?'Your dates are beyond the 16-day forecast; Claude will use seasonal norms.':'Pick a destination to see the forecast.'}</p>`;
-  if(S.plan)renderPlan();
+  setBuildBtn();if(S.plan)renderPlan();
 }
 const fmtDate=d=>new Date(d+'T00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
 
 /* ---------- Claude ---------- */
 function profileText(){return PQ.map((q,i)=>S.prof[i]?`${q[0]}: ${S.prof[i]}`:null).filter(Boolean).join('\n')}
 function tripText(){return TQ.map((t,i)=>S.trip[i]?`${t.q}: ${S.trip[i]}`:null).filter(Boolean).join('\n')}
-function buildPrompt(){
+function ctx(){
   const car=carInfo(),rt=S.route,days=daysBetween(),n=+S.trip[4]||1;
-  const fuel=rt?`Driving distance ${S.home.name} → ${S.dest.name}: ${Math.round(rt.km)} km, ${rt.hrs.toFixed(1)} h one way (OSRM). Round-trip fuel for ${car?car.name:'no car'}: ${inr(fuelCost(rt.km*2,car))} at ${car?'₹'+car.perKm+' per km ('+car.fuel+')':''}. Toll estimate ${inr(rt.km*2/100*S.set.toll)}.`:'No fixed destination yet — suggest 3 and pick the best, with its distance from home.';
+  const fuel=rt?`Driving ${S.home.name} → ${S.dest.name}: ${Math.round(rt.km)} km, ${rt.hrs.toFixed(1)} h one way. Round-trip fuel ${inr(fuelCost(rt.km*2,car))} (${car?car.name+' @ ₹'+car.perKm+'/km':'no car'}), tolls ~${inr(rt.km*2/100*S.set.toll)}.`:'No fixed destination — suggest the single best one for this profile, weather and dates, with distance from home.';
   const wx=(S.wx||[]).map(w=>`${w.date}: ${w.code}, ${Math.round(w.min)}–${Math.round(w.max)}°C, rain ${w.rain}%`).join('\n')||'No forecast (beyond 16 days) — use seasonal norms.';
-  return `You are a meticulous Indian road-trip planner. Today is ${today()}. Currency is Indian rupees only. The traveller drives themselves and enjoys it.
-
-HOME / START: ${S.home.name} (${S.home.lat.toFixed(3)}, ${S.home.lon.toFixed(3)})
-TRIP: ${S.trip[2]} to ${S.trip[3]} (${days} days), ${n} people.
+  return `Today ${today()}. Currency ₹ only. Traveller drives themselves and enjoys it.
+HOME: ${S.home.name}. TRIP: ${S.trip[2]} to ${S.trip[3]} (${days} days), ${n} people.
 ${fuel}
-
 FORECAST AT DESTINATION:
 ${wx}
-
-TRAVELLER PROFILE (50 answers):
+PROFILE:
 ${profileText()}
-
-THIS TRIP (20 answers):
-${tripText()}
-
-${S.set.search?`Use web search to check, for the actual dates: (1) trains from the nearest railway station to home (Rampura Phul / Bathinda / Barnala) and buses (PRTC/Volvo) via ixigo, RailOne/IRCTC, redBus, MakeMyTrip — with class, fare and duration; (2) hotels/homestays on MakeMyTrip, Airbnb, Booking.com, Goibibo — real names, area, approx price/night; (3) famous food places with TripAdvisor/Google/Reddit ratings; (4) 3–4 current news items about the destination that affect a traveller (roads, weather alerts, festivals, closures); (5) entry fees and timings for attractions. Keep searches focused; don't exceed the search budget.`:'Do not search; use your knowledge and say clearly which figures are estimates.'}
-
-Respond with ONLY a JSON object, no markdown fences, no prose before or after, matching exactly:
-{
- "destination": "final destination name",
- "why": "2–3 sentences on why this destination and plan fits the profile and weather",
- "news": ["short current news item relevant to the traveller", "..."],
- "transport": {
-   "drive": "verdict on driving vs train/bus with reasoning, hill-road cautions, best departure time",
-   "train": [{"name":"train name/number","from":"","to":"","dep":"","arr":"","class":"","fare":0,"note":""}],
-   "bus": [{"operator":"","from":"","to":"","dep":"","duration":"","fare":0,"note":""}],
-   "local": "how to get around at the destination and typical costs (auto/cab/scooter/parking)"
- },
- "stays": [{"name":"","area":"","type":"","pricePerNight":0,"distanceToMainSights":"e.g. 500 m walk / 20 min drive","near":true,"why":"","site":"MakeMyTrip|Airbnb|Booking.com|direct"}],
- "food": [{"name":"","area":"","famousFor":"","costPerPerson":0,"rating":"4.5 Google / 4.0 TripAdvisor","note":""}],
- "days": [{"date":"YYYY-MM-DD","title":"","drivingKm":0,"items":[{"time":"07:00","activity":"","cost":0,"note":"tips, booking, what to order"}],"dayCost":0}],
- "expenses": {"fuel":0,"tolls":0,"parking":0,"localTransport":0,"stay":0,"food":0,"activities":0,"shopping":0,"buffer":0,"total":0},
- "packing": ["..."],
- "tips": ["..."]
+THIS TRIP:
+${tripText()}`;
 }
-Rules: include ${days} day objects, one per date from ${S.trip[2]} to ${S.trip[3]}. Costs are for all ${n} people combined, in ₹, realistic for 2026. Mark stays with near=true if walking distance to main sights, near=false if 15+ min away — include at least two of each so the traveller can choose. Include 5–8 food places. Include 5–7 items per day with times; keep every note under 20 words; packing max 8 items, tips max 6. dayCost must equal the sum of that day's item costs. expenses.total must equal the sum of all expense fields.`;
+function researchPrompt(){
+  const n=+S.trip[4]||1;
+  return `${ctx()}
+
+${S.set.search?'Use web search (stay within the search budget) to check for the actual dates: trains from Bathinda/Rampura Phul/Barnala and buses (PRTC/Volvo) via ixigo, RailOne, redBus, MakeMyTrip; real hotels/homestays on MakeMyTrip, Airbnb, Booking.com with price/night; famous food places with ratings; 3–4 current news items affecting a traveller (roads, alerts, festivals, closures); entry fees.':'Do not search; use knowledge and flag estimates.'}
+
+Respond with ONLY compact JSON, no fences, no prose:
+{"destination":"","why":"2 sentences",
+"news":["short item"],
+"transport":{"drive":"driving vs train/bus verdict, hill cautions, best departure time","train":[{"name":"","from":"","to":"","dep":"","arr":"","class":"","fare":0,"note":""}],"bus":[{"operator":"","from":"","to":"","dep":"","duration":"","fare":0,"note":""}],"local":"getting around + costs"},
+"stays":[{"name":"","area":"","type":"","pricePerNight":0,"distanceToMainSights":"","near":true,"why":"","site":""}],
+"food":[{"name":"","area":"","famousFor":"","costPerPerson":0,"rating":"","note":""}],
+"expenses":{"parking":0,"localTransport":0,"stay":0,"food":0,"activities":0,"shopping":0,"buffer":0},
+"packing":["max 8"],"tips":["max 6"]}
+Rules: max 3 trains, 3 buses, 4 stays (2 near=true, 2 near=false), 6 food places. Costs for all ${n} people combined, whole trip, realistic 2026. Notes under 15 words.`;
+}
+function daysPrompt(dates){
+  const p=S.plan,n=+S.trip[4]||1;
+  const brief=`DESTINATION: ${p.destination}. STAY OPTIONS: ${(p.stays||[]).map(s=>s.name+' ('+s.area+')').join('; ')}. FOOD: ${(p.food||[]).map(f=>f.name+' — '+f.famousFor).join('; ')}. LOCAL TRANSPORT: ${p.transport?.local||''}. ROUTE VERDICT: ${p.transport?.drive||''}.`;
+  return `${ctx()}
+${brief}
+Whole trip runs ${S.trip[2]} to ${S.trip[3]}. Write ONLY the days ${dates.join(', ')} (first day starts from home if it is ${S.trip[2]}; last day returns home if it is ${S.trip[3]}).
+Respond with ONLY compact JSON, no fences:
+{"days":[{"date":"YYYY-MM-DD","title":"","drivingKm":0,"items":[{"time":"07:00","activity":"","cost":0,"note":"under 15 words"}],"dayCost":0}]}
+Rules: exactly ${dates.length} day objects in date order; 5–7 items each with times; costs for all ${n} people in ₹; dayCost = sum of item costs.`;
 }
 async function streamOnce(h,body,onText){
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:h,body:JSON.stringify({...body,stream:true})});
@@ -487,33 +486,41 @@ async function streamOnce(h,body,onText){
   try{while(true){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
     const lines=buf.split('\n');buf=lines.pop();
     for(const ln of lines){if(!ln.startsWith('data:'))continue;let ev;try{ev=JSON.parse(ln.slice(5))}catch(e){continue}
-      if(ev.type==='content_block_delta'&&ev.delta?.type==='text_delta'){text+=ev.delta.text;onText(text)}
+      if(ev.type==='content_block_delta'&&ev.delta?.type==='text_delta'){text+=ev.delta.text;onText&&onText(text)}
       else if(ev.type==='message_start'){usage.input_tokens+=ev.message?.usage?.input_tokens||0}
       else if(ev.type==='message_delta'){stop=ev.delta?.stop_reason||stop;usage.output_tokens+=ev.usage?.output_tokens||0}
       else if(ev.type==='error')throw new Error(ev.error?.message||'stream error')}}}catch(e){e.partial=text;throw e}
   return{text,stop,usage};
 }
-async function callClaude(prompt,onProgress){
+function jsonComplete(t){
+  let str=false,esc=false,d=0,seen=false;
+  for(const c of t){if(str){if(esc)esc=false;else if(c==='\\')esc=true;else if(c==='"')str=false;continue}
+    if(c==='"')str=true;else if(c==='{'||c==='['){d++;seen=true}else if(c==='}'||c===']')d--;}
+  return seen&&d<=0;
+}
+const isNet=e=>/fetch|network|load failed|stream|body|aborted/i.test(e.message);
+async function claudeJSON(prompt,{search=false,maxTokens=6000,onProgress}={}){
   const s=S.set,h={'Content-Type':'application/json'};
   if(s.key){h['x-api-key']=s.key;h['anthropic-version']='2023-06-01';h['anthropic-dangerous-direct-browser-access']='true'}
-  const msgs=[{role:'user',content:prompt}];let text='',usage={input_tokens:0,output_tokens:0},netFails=0;
-  for(let round=0;round<6;round++){
-    const body={model:s.model,max_tokens:16000,messages:msgs};
-    if(s.search&&round===0)body.tools=[{type:'web_search_20250305',name:'web_search',max_uses:+s.maxSearch||8}];
-    let res;
-    try{res=await streamOnce(h,body,t=>onProgress&&onProgress(text.length+t.length))}
-    catch(e){
-      const net=/fetch|network|load failed|stream|body/i.test(e.message);
-      if(!net||++netFails>3)throw new Error(net?'Connection dropped 3 times. Check signal, or turn off web search in Settings and rebuild.':e.message);
-      await new Promise(r=>setTimeout(r,1500*netFails));
-      res={text:e.partial||'',stop:'max_tokens',usage:{input_tokens:0,output_tokens:0}};
+  let text='',usage={input_tokens:0,output_tokens:0},msgs=[{role:'user',content:prompt}];
+  for(let attempt=0;attempt<4;attempt++){
+    const body={model:s.model,max_tokens:maxTokens,messages:msgs};
+    if(search&&msgs.length===1)body.tools=[{type:'web_search_20250305',name:'web_search',max_uses:+s.maxSearch||8}];
+    try{
+      const res=await streamOnce(h,body,t=>onProgress&&onProgress(text.length+t.length));
+      text+=res.text;usage.input_tokens+=res.usage.input_tokens;usage.output_tokens+=res.usage.output_tokens;
+      if(jsonComplete(text)||res.stop!=='max_tokens')break;
+      msgs=[{role:'user',content:prompt},{role:'assistant',content:text.trimEnd()},{role:'user',content:'Continue EXACTLY from the last character. Only the remaining JSON.'}];
+    }catch(e){
+      if(!isNet(e))throw e;
+      text+=e.partial||'';
+      if(jsonComplete(text))break;
+      if(attempt===3)throw new Error('Connection kept dropping. Move to better signal or Wi‑Fi and tap Resume — finished parts are saved.');
+      if(text.trim())msgs=[{role:'user',content:prompt},{role:'assistant',content:text.trimEnd()},{role:'user',content:'Continue EXACTLY from the last character. Only the remaining JSON.'}];
+      await new Promise(r=>setTimeout(r,1500*(attempt+1)));
     }
-    text+=res.text;usage.input_tokens+=res.usage.input_tokens;usage.output_tokens+=res.usage.output_tokens;
-    if(res.stop&&res.stop!=='max_tokens')break;
-    if(!text.trim()){msgs.length=1;continue}
-    msgs.length=1;msgs.push({role:'assistant',content:text},{role:'user',content:'Your JSON was cut off. Continue EXACTLY from the last character you wrote, outputting only the remaining JSON. No repetition, no fences, no commentary.'});
   }
-  return{text,usage};
+  const obj=parseJSON(text);obj._usage=usage;return obj;
 }
 function repairJSON(t){
   let str=false,esc=false,lastGood=0,stack=[];
@@ -529,24 +536,53 @@ function repairJSON(t){
   return out+stack.reverse().join('');
 }
 function parseJSON(t){
-  let s=t.replace(/```json|```/g,'').trim();const a=s.indexOf('{');if(a<0)throw new Error('Claude did not return JSON. Try again or lower max searches.');
+  let s=t.replace(/```json|```/g,'').trim();const a=s.indexOf('{');if(a<0)throw new Error('Claude did not return JSON. Tap Resume.');
   s=s.slice(a);const b=s.lastIndexOf('}');
   const tries=[s.slice(0,b+1),s.slice(0,b+1).replace(/,\s*([}\]])/g,'$1'),repairJSON(s),repairJSON(s).replace(/,\s*([}\]])/g,'$1')];
   let err;for(const c of tries){try{return JSON.parse(c)}catch(e){err=e}}
-  throw new Error('Could not parse the plan ('+err.message+'). Tap Rebuild once more.');
+  throw new Error('Could not parse ('+err.message+'). Tap Resume.');
 }
-async function buildPlan(){
-  const b=$('btnBuild');b.disabled=true;b.innerHTML='<span class="spin"></span>Searching and planning… 1–3 min';$('planErr').innerHTML='';
+function tripDates(){const out=[];let d=new Date(S.trip[2]+'T00:00');const end=new Date(S.trip[3]+'T00:00');while(d<=end){out.push(d.toISOString().slice(0,10));d.setDate(d.getDate()+1)}return out}
+const tripSig=()=>JSON.stringify([S.trip,S.home.name]);
+async function buildPlan(resume){
+  const b=$('btnBuild');b.disabled=true;$('planErr').innerHTML='';
+  const prog=(m,n)=>{b.innerHTML='<span class="spin"></span>'+m+(n?' · '+Math.round(n/1000)+'k':'')};
+  const sig=tripSig();
+  if(!resume||!S.plan||S.plan.sig!==sig){S.plan=null;$('planOut').innerHTML=''}
   try{
-    const {text,usage}=await callClaude(buildPrompt(),n=>{b.innerHTML='<span class="spin"></span>Planning… '+Math.round(n/1000)+'k chars received'});
-    const plan=parseJSON(text);plan.usage=usage;plan.built=new Date().toISOString();
-    S.plan=plan;S.done={};save();
-    if(!S.dest&&plan.destination){try{S.dest=await geocode(plan.destination);S.route=await osrm(S.home,S.dest);S.wx=await weather(S.dest.lat,S.dest.lon,S.trip[2],S.trip[3]).catch(()=>[]);save()}catch(e){}}
-    renderPlanView();toast('Plan ready');
-  }catch(e){$('planErr').innerHTML=`<div class="err">${e.message}</div>`}
-  b.disabled=false;b.textContent='Rebuild plan with Claude';
+    let usage={input_tokens:S.plan?.usage?.input_tokens||0,output_tokens:S.plan?.usage?.output_tokens||0};
+    if(!S.plan){
+      prog(S.set.search?'Step 1 · searching trains, stays, food, news':'Step 1 · researching');
+      const r=await claudeJSON(researchPrompt(),{search:S.set.search,maxTokens:6000,onProgress:n=>prog('Step 1 · researching',n)});
+      usage.input_tokens+=r._usage.input_tokens;usage.output_tokens+=r._usage.output_tokens;delete r._usage;
+      S.plan={...r,sig,days:[],built:new Date().toISOString(),usage};S.done={};save();
+      if(!S.dest&&r.destination){try{S.dest=await geocode(r.destination);S.route=await osrm(S.home,S.dest);S.wx=await weather(S.dest.lat,S.dest.lon,S.trip[2],S.trip[3]).catch(()=>[]);save()}catch(e){}}
+      renderPlanView();
+    }
+    const dates=tripDates(),have=new Set((S.plan.days||[]).map(d=>d.date));const missing=dates.filter(d=>!have.has(d));
+    for(let i=0;i<missing.length;i+=2){
+      const chunk=missing.slice(i,i+2);
+      prog(`Step 2 · days ${dates.indexOf(chunk[0])+1}–${dates.indexOf(chunk[chunk.length-1])+1} of ${dates.length}`);
+      const r=await claudeJSON(daysPrompt(chunk),{maxTokens:5000,onProgress:n=>prog(`Step 2 · days ${dates.indexOf(chunk[0])+1}–${dates.indexOf(chunk[chunk.length-1])+1} of ${dates.length}`,n)});
+      usage.input_tokens+=r._usage.input_tokens;usage.output_tokens+=r._usage.output_tokens;
+      S.plan.days=[...S.plan.days,...(r.days||[])].filter((d,k,arr)=>arr.findIndex(x=>x.date===d.date)===k).sort((x,y)=>x.date<y.date?-1:1);
+      S.plan.usage=usage;save();renderPlan();
+    }
+    finalizeExpenses();save();renderPlan();toast('Plan ready');
+  }catch(e){$('planErr').innerHTML=`<div class="err">${e.message}</div>`;if(S.plan)renderPlan()}
+  b.disabled=false;setBuildBtn();
 }
-
+function finalizeExpenses(){
+  const p=S.plan,car=carInfo(),rt=S.route,ex=p.expenses||{};
+  const km=(p.days||[]).reduce((a,d)=>a+(+d.drivingKm||0),0)||(rt?rt.km*2:0);
+  ex.fuel=Math.round(fuelCost(km,car));ex.tolls=Math.round(km/100*S.set.toll);
+  const itemSum=(p.days||[]).reduce((a,d)=>a+(d.items||[]).reduce((x,i)=>x+(+i.cost||0),0),0);
+  if(!ex.food&&!ex.activities)ex.activities=itemSum;
+  delete ex.total;p.expenses=ex;p.complete=(p.days||[]).length>=tripDates().length;
+}
+function setBuildBtn(){const b=$('btnBuild');if(!b)return;const inc=S.plan&&S.plan.sig===tripSig()&&!S.plan.complete;
+  b.textContent=S.plan?'Rebuild plan with Claude':'Build my plan with Claude';b.onclick=()=>buildPlan(false);
+  let r=$('btnResume');if(inc){if(!r){r=document.createElement('button');r.id='btnResume';r.className='gold';b.parentNode.insertBefore(r,b)}r.textContent='Resume — finish missing days';r.onclick=()=>buildPlan(true)}else if(r)r.remove()}
 /* ---------- render plan ---------- */
 function links(){
   const d=encodeURIComponent(S.plan?.destination||S.trip[0]||''),h=encodeURIComponent(S.home.name.split(',')[0]);
@@ -581,7 +617,7 @@ function renderPlan(){
   <div class="card"><h3>Where to stay</h3><small>Tap one to make it your pick.</small>
   ${(p.stays||[]).map((s,i)=>`<div class="stay" onclick="pickStay(${i})" style="cursor:pointer;${p.pickedStay===i?'background:var(--sand);margin:0 -1rem;padding:.7rem 1rem':''}"><b>${s.name}</b><span class="tag">${s.near?'near sights':'further out'}</span><span class="tag">${s.site||''}</span><br><small>${s.area} · ${s.type} · ${s.distanceToMainSights}</small><br>${inr(s.pricePerNight)}/night — ${s.why}${p.pickedStay===i?' <b>✓ picked</b>':''}</div>`).join('')}</div>
   <div class="card"><h3>Eat here</h3>${(p.food||[]).map(f=>`<div class="stay"><b>${f.name}</b><br><small>${f.area} · ${f.rating||''}</small><br>${f.famousFor} — ${inr(f.costPerPerson)}/person${f.note?`<br><small>${f.note}</small>`:''}</div>`).join('')}</div>
-  <div class="card"><h2>Day by day</h2>${(p.days||[]).map((d,i)=>`<div class="day"><h3>Day ${i+1} · ${fmtDate(d.date)}</h3><p><b>${d.title}</b>${d.drivingKm?` · ${d.drivingKm} km driving`:''}</p>
+  <div class="card"><h2>Day by day</h2>${!p.complete?'<p class="muted">Some days still missing — tap Resume above.</p>':''}${(p.days||[]).map((d,i)=>`<div class="day"><h3>Day ${i+1} · ${fmtDate(d.date)}</h3><p><b>${d.title}</b>${d.drivingKm?` · ${d.drivingKm} km driving`:''}</p>
   ${(d.items||[]).map(it=>`<div class="item"><span class="t">${it.time}</span><span>${it.activity}${it.note?`<span class="n">${it.note}</span>`:''}</span><span class="c">${it.cost?inr(it.cost):''}</span></div>`).join('')}
   <p style="text-align:right"><b>Day total ${inr(d.dayCost)}</b></p></div>`).join('')}</div>
   ${(p.packing||[]).length?`<div class="card"><h3>Pack</h3><ul class="plain">${p.packing.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
