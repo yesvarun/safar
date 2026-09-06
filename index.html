@@ -155,6 +155,11 @@ details summary{cursor:pointer;font-weight:700;padding:.4rem 0}
   </div>
 </section>
 
+<!-- ===================== TWEAK (40 Qs) ===================== -->
+<section class="view" id="v-tweak">
+  <div class="card" id="tweakCard"></div>
+</section>
+
 <!-- ===================== GO (execute) ===================== -->
 <section class="view" id="v-go">
   <div class="card" id="goCard"><h2>Nothing to execute yet</h2><p>Build a plan first.</p></div>
@@ -318,16 +323,16 @@ let S={
   prof:store.get('prof',{}), trip:store.get('trip',{}),
   pi:store.get('pi',0), ti:store.get('ti',0),
   plan:store.get('plan',null), dest:store.get('dest',null), route:store.get('route',null), wx:store.get('wx',null),
-  done:store.get('done',{}), spent:store.get('spent',[]),
+  done:store.get('done',{}), spent:store.get('spent',[]), tweak:store.get('tweak',{}), tw:store.get('tw',0), twMode:store.get('twMode','tweak'), learned:store.get('learned',[]),
   set:store.get('set',{key:'',model:'claude-sonnet-4-6',search:true,maxSearch:8,innova:10,baleno:6,toll:110})
 };
-const save=()=>{for(const k of ['home','prof','trip','pi','ti','plan','dest','route','wx','done','spent','set'])store.set(k,S[k])};
+const save=()=>{for(const k of ['home','prof','trip','pi','ti','plan','dest','route','wx','done','spent','set','tweak','tw','twMode','learned'])store.set(k,S[k])};
 
 /* ---------- nav ---------- */
 function go(v){
   document.querySelectorAll('section.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  if(v==='profile')renderProfile();if(v==='trip')renderTrip();if(v==='plan')renderPlanView();if(v==='go')renderGo();if(v==='set')renderSet();
+  if(v==='profile')renderProfile();if(v==='tweak')renderTweak();if(v==='trip')renderTrip();if(v==='plan')renderPlanView();if(v==='go')renderGo();if(v==='set')renderSet();
   window.scrollTo(0,0);
 }
 
@@ -451,7 +456,7 @@ ${wx}
 PROFILE:
 ${profileText()}
 THIS TRIP:
-${tripText()}`;
+${tripText()}${(S.plan?.tweaks||window._tweaks)?'\nCHANGES THE TRAVELLER ASKED FOR (must apply):\n'+(S.plan?.tweaks||window._tweaks):''}${S.learned.length?'\nLESSONS FROM PAST TRIPS:\n'+S.learned.join('\n'):''}`;
 }
 function researchPrompt(){
   const n=+S.trip[4]||1;
@@ -544,18 +549,20 @@ function parseJSON(t){
 }
 function tripDates(){const out=[];let d=new Date(S.trip[2]+'T00:00');const end=new Date(S.trip[3]+'T00:00');while(d<=end){out.push(d.toISOString().slice(0,10));d.setDate(d.getDate()+1)}return out}
 const tripSig=()=>JSON.stringify([S.trip,S.home.name]);
-async function buildPlan(resume){
+async function buildPlan(resume,keepTweaks){
+  const tweaks=keepTweaks?S.plan?.tweaks:'';window._tweaks=tweaks;
   const b=$('btnBuild');b.disabled=true;$('planErr').innerHTML='';
   const prog=(m,n)=>{b.innerHTML='<span class="spin"></span>'+m+(n?' · '+Math.round(n/1000)+'k':'')};
   const sig=tripSig();
-  if(!resume||!S.plan||S.plan.sig!==sig){S.plan=null;$('planOut').innerHTML=''}
+  if(!resume||!S.plan||S.plan.sig!==sig){S.plan=tweaks?{tweaks}:null;$('planOut').innerHTML=''}
+  if(S.plan&&!S.plan.destination)S.plan=null;
   try{
     let usage={input_tokens:S.plan?.usage?.input_tokens||0,output_tokens:S.plan?.usage?.output_tokens||0};
     if(!S.plan){
       prog(S.set.search?'Step 1 · searching trains, stays, food, news':'Step 1 · researching');
       const r=await claudeJSON(researchPrompt(),{search:S.set.search,maxTokens:6000,onProgress:n=>prog('Step 1 · researching',n)});
       usage.input_tokens+=r._usage.input_tokens;usage.output_tokens+=r._usage.output_tokens;delete r._usage;
-      S.plan={...r,sig,days:[],built:new Date().toISOString(),usage};S.done={};save();
+      S.plan={...r,sig,days:[],built:new Date().toISOString(),usage,tweaks:window._tweaks||''};S.done={};save();
       if(!S.dest&&r.destination){try{S.dest=await geocode(r.destination);S.route=await osrm(S.home,S.dest);S.wx=await weather(S.dest.lat,S.dest.lon,S.trip[2],S.trip[3]).catch(()=>[]);save()}catch(e){}}
       renderPlanView();
     }
@@ -583,6 +590,79 @@ function finalizeExpenses(){
 function setBuildBtn(){const b=$('btnBuild');if(!b)return;const inc=S.plan&&S.plan.sig===tripSig()&&!S.plan.complete;
   b.textContent=S.plan?'Rebuild plan with Claude':'Build my plan with Claude';b.onclick=()=>buildPlan(false);
   let r=$('btnResume');if(inc){if(!r){r=document.createElement('button');r.id='btnResume';r.className='gold';b.parentNode.insertBefore(r,b)}r.textContent='Resume — finish missing days';r.onclick=()=>buildPlan(true)}else if(r)r.remove()}
+
+/* ---------- 40 tweak / feedback questions (built from the plan) ---------- */
+function TWQ(){
+  const p=S.plan||{},D=p.destination||S.trip[0]||'the destination';
+  const stays=(p.stays||[]).map(s=>s.name).slice(0,3),foods=(p.food||[]).map(f=>f.name).slice(0,3);
+  const days=(p.days||[]).map((d,i)=>`Day ${i+1}: ${d.title}`).slice(0,3);
+  const m=S.twMode==='feedback';
+  const A=m?'was':'is',V=m?'Did':'Do';
+  return [
+  [`Overall, how ${m?'did':'does'} the ${D} plan feel?`,['Perfect','Good, small tweaks','Half right','Start over']],
+  [`Pace of the days`,['Too slow','Right','Too packed','Vary by day']],
+  [`Start times`,['Earlier','Right','Later','Earlier only for sights']],
+  [`Evenings`,['More to do','Right','Free evenings','Back to stay early']],
+  [`Total budget ${m?'vs what you spent':'shown'}`,['Cut 30%','Cut 10%','Right','Can go 20% higher']],
+  [`Stay budget`,['Cheaper','Right','Better property','Homestay instead']],
+  [`Stay location`,['Closer to sights','Right','Quieter, further','Near highway']],
+  [`Stay options ${A}`,[...stays,'None of these'].slice(0,4)],
+  [`Rooms`,['Fewer','Right','Bigger / suite','Separate rooms']],
+  [`Food budget`,['Cheaper dhabas','Right','More good restaurants','One splurge meal']],
+  [`Food places listed ${A}`,[...foods,'Want different ones'].slice(0,4)],
+  [`Street food`,['More','Right','Less','None']],
+  [`Diet handling`,['Fine','Need stricter veg','Want more non-veg','Jain needed']],
+  [`Driving per day`,['Too much','Right','Can do more','Break long legs']],
+  [`Route`,['Take fastest','Keep','Scenic detour','Avoid tolls']],
+  [`Departure day plan`,['Leave earlier','Right','Leave later','Stopover on the way']],
+  [`Return day plan`,['Leave earlier','Right','Leave later','Extra night']],
+  [`Rest stops / chai`,['More','Right','Fewer','Named dhabas please']],
+  [`Sightseeing volume`,['Fewer, deeper','Right','More places','Only the top 3']],
+  [`Heritage / religious sites`,['More','Right','Less','Skip']],
+  [`Nature / outdoors`,['More','Right','Less','Skip']],
+  [`Markets / shopping`,['More','Right','Less','Skip']],
+  [`Adventure activities`,['Add','Right','Remove','Only mild']],
+  [`Crowded places`,['Avoid','Fine on weekdays','Fine','Want the buzz']],
+  [`Day plans ${A}`,[...days,'Need reshuffle'].slice(0,4)],
+  [`Which day needs most change?`,['Day 1','Middle days','Last day','None']],
+  [`Local transport at ${D}`,['Own car everywhere','Park & walk','Autos / cabs','Rent scooter']],
+  [`Parking info`,['Need specific spots','Enough','Not needed','Add costs']],
+  [`Train / bus alternative`,['Show more','Enough','Drop it','Use for one leg']],
+  [`Weather handling`,['Add rain backups','Fine','Shift outdoor items','Add heat breaks']],
+  [`Kids / elders needs`,['Add rest time','Fine','Not applicable','Add kid activities']],
+  [`Photography stops`,['Add golden-hour','Fine','Fewer','Add viewpoints']],
+  [`Guides / entry timings`,['Add guide','Fine','Skip guides','Add booking links']],
+  [`Notes detail`,['More detail','Right','Shorter','Only costs']],
+  [`Buffer / emergency`,['Bigger','Right','Smaller','Remove']],
+  [`Something missing?`,['A must-do I named','Nightlife / cafés','Spiritual stop','Nothing']],
+  [`Sunrise / sunset`,['Add','Fine','Remove','Sunset only']],
+  [`Packing list`,['Fine','Add items','Shorter','Skip']],
+  [`Tips`,['Fine','More local tips','Safety tips','Skip']],
+  [m?`Would you go to ${D} again?`:`Rebuild now with these tweaks?`,m?['Yes','Maybe','No','Different season']:['Yes, rebuild','Save only','Rebuild days only','Cancel']]
+  ];
+}
+function startTweak(mode){S.twMode=mode;S.tw=0;S.tweak={};save();go('tweak')}
+function renderTweak(){
+  const Q=TWQ(),i=S.tw,card=$('tweakCard');
+  if(!S.plan){card.innerHTML='<h2>No plan to tweak</h2><p>Build a plan first.</p>';return}
+  if(i>=Q.length){
+    const m=S.twMode==='feedback';
+    card.innerHTML=`<h2>${m?'Feedback saved':'Tweaks ready'}</h2><p>${m?'These answers will shape every future trip too.':'Rebuild uses these on top of your profile and trip answers.'}</p>
+    <div class="row"><button class="gold" onclick="applyTweaks(true)">Rebuild whole plan</button><button onclick="applyTweaks(false)">Rebuild days only (cheaper)</button><button class="ghost" onclick="S.tw=0;save();renderTweak()">Review answers</button></div>`;return}
+  const [q,opts]=Q[i],cur=S.tweak[i];
+  card.innerHTML=`<span class="qnum">${i+1}</span><small>${S.twMode==='feedback'?'Trip feedback':'Tweak plan'} · ${i+1} of ${Q.length}</small><div class="prog"><i style="width:${i/Q.length*100}%"></i></div><h2>${q}</h2>
+  ${opts.map(o=>`<button class="opt ${cur===o?'sel':''}" onclick="ansTw(${i},this.textContent)">${o}</button>`).join('')}
+  <div class="row" style="margin-top:.8rem"><button class="ghost small" onclick="S.tw=Math.max(0,S.tw-1);save();renderTweak()" ${i===0?'disabled':''}>Back</button><button class="ghost small" onclick="S.tw++;save();renderTweak()">Skip</button><button class="ghost small" onclick="S.tw=${Q.length};save();renderTweak()">Finish early</button></div>`;
+}
+function ansTw(i,v){S.tweak[i]=v;S.tw=i+1;save();renderTweak()}
+function tweakText(){const Q=TWQ();return Q.map((q,i)=>S.tweak[i]&&S.tweak[i]!=='Right'&&S.tweak[i]!=='Fine'?`${q[0]}: ${S.tweak[i]}`:null).filter(Boolean).join('\n')}
+async function applyTweaks(full){
+  const t=tweakText(),D=S.plan.destination;
+  if(S.twMode==='feedback'&&t){S.learned.push(`After ${D} (${S.trip[2]}): `+t.replace(/\n/g,'; '));S.learned=S.learned.slice(-5)}
+  S.plan.tweaks=t;save();go('plan');
+  if(full)buildPlan(false,true);else{S.plan.days=[];S.plan.complete=false;save();buildPlan(true)}
+}
+
 /* ---------- render plan ---------- */
 function links(){
   const d=encodeURIComponent(S.plan?.destination||S.trip[0]||''),h=encodeURIComponent(S.home.name.split(',')[0]);
@@ -622,7 +702,7 @@ function renderPlan(){
   <p style="text-align:right"><b>Day total ${inr(d.dayCost)}</b></p></div>`).join('')}</div>
   ${(p.packing||[]).length?`<div class="card"><h3>Pack</h3><ul class="plain">${p.packing.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
   ${(p.tips||[]).length?`<div class="card"><h3>Tips</h3><ul class="plain">${p.tips.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
-  <div class="row"><button onclick="go('go')">Start executing this trip</button><button class="ghost" onclick="sharePlan()">Share / copy plan</button></div>`;
+  <div class="row"><button class="gold" onclick="startTweak('tweak')">Tweak — 40 questions, then rebuild</button></div><div class="row"><button onclick="go('go')">Start executing this trip</button><button class="ghost" onclick="sharePlan()">Share / copy plan</button></div>`;
 }
 function editEx(k,v){S.plan.expenses[k]=+v||0;save();renderPlan()}
 function pickStay(i){S.plan.pickedStay=i;const s=S.plan.stays[i];S.plan.expenses.stay=Math.round((s.pricePerNight||0)*Math.max(1,daysBetween()-1));save();renderPlan();toast('Stay cost updated for '+s.name)}
@@ -649,6 +729,7 @@ function renderGo(){
   <h3 style="margin-top:1rem">Checklist</h3>
   ${(p.days||[]).map((d,di)=>`<details ${di===todayIdx||(todayIdx<0&&di===0)?'open':''}><summary>Day ${di+1} · ${fmtDate(d.date)} — ${d.title}</summary>
   ${(d.items||[]).map((it,ii)=>{const k=di+'-'+ii,on=!!S.done[k];return`<label class="chk ${on?'done':''}" style="font-weight:500;margin:0"><input type="checkbox" ${on?'checked':''} onchange="S.done['${k}']=this.checked;save();renderGo()"><span><b>${it.time}</b> ${it.activity}${it.cost?` · ${inr(it.cost)}`:''}</span></label>`}).join('')}</details>`).join('')}
+  <div class="row" style="margin-top:1rem"><button class="gold" onclick="startTweak('feedback')">End trip — 40 feedback questions</button></div>
   ${links()}`;
 }
 function renderCompare(planned){
@@ -665,7 +746,7 @@ function renderSet(){const s=S.set;$('sKey').value=s.key||'';$('sModel').value=s
   S.set={key:$('sKey').value.trim(),model:$('sModel').value,search:$('sSearch').checked,maxSearch:+$('sMaxSearch').value||8,innova:+$('sInnova').value||10,baleno:+$('sBaleno').value||6,toll:+$('sToll').value||110};save();toast('Saved')}));
 function exportData(){const blob=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='safar-'+today()+'.json';a.click()}
 function importData(inp){const f=inp.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);S={...S,...d};save();toast('Imported');go('home');showHome()}catch(e){toast('Bad file')}})}
-function clearAll(){if(!confirm('Erase profile, trip, plan and expenses?'))return;['home','prof','trip','pi','ti','plan','dest','route','wx','done','spent','set'].forEach(k=>store.del(k));location.reload()}
+function clearAll(){if(!confirm('Erase profile, trip, plan and expenses?'))return;['home','prof','trip','pi','ti','plan','dest','route','wx','done','spent','set','tweak','tw','twMode','learned'].forEach(k=>store.del(k));location.reload()}
 
 /* ---------- init ---------- */
 showHome();homeWeather();
