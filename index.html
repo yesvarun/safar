@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1B1F3A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Safar — plan, drive, spend</title>
+<link rel="manifest" id="manifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --night:#1B1F3A;--night-2:#262B4F;--sand:#EFE6D3;--sand-2:#E2D6BC;--ink:#1A1A1F;--muted:#6B6A73;
+  --marigold:#F2B134;--teal:#1D7A73;--rose:#C2185B;--ok:#2E7D32;--err:#B3261E;
+  --r:14px;--r-s:8px;
+}
+*{box-sizing:border-box}html,body{margin:0;background:var(--sand);color:var(--ink);font:16px/1.5 Manrope,system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:700;line-height:1.15;margin:0}
+h1{font-size:2rem}h2{font-size:1.45rem}h3{font-size:1.1rem}
+p{margin:.4rem 0}small,.muted{color:var(--muted);font-size:.85rem}
+a{color:var(--teal)}
+button{font:inherit;cursor:pointer;border:0;border-radius:var(--r-s);padding:.7rem 1rem;background:var(--night);color:var(--sand);font-weight:700}
+button.ghost{background:transparent;color:var(--night);border:1.5px solid var(--night)}
+button.gold{background:var(--marigold);color:var(--ink)}
+button.small{padding:.4rem .7rem;font-size:.85rem}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--marigold);outline-offset:2px}
+input,select,textarea{font:inherit;width:100%;padding:.65rem .8rem;border:1.5px solid var(--sand-2);border-radius:var(--r-s);background:#fff;color:var(--ink)}
+textarea{min-height:90px;resize:vertical}
+label{display:block;font-weight:700;font-size:.9rem;margin:.9rem 0 .3rem}
+.row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+.row>*{flex:1 1 auto}
+header{background:var(--night);color:var(--sand);padding:calc(env(safe-area-inset-top) + 1.1rem) 1.2rem 1.1rem}
+header h1{color:var(--marigold);font-weight:500;letter-spacing:-.02em}
+header p{color:var(--sand-2);margin:.2rem 0 0}
+main{padding:1rem 1rem calc(env(safe-area-inset-bottom) + 5.5rem);max-width:760px;margin:0 auto}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--night);display:flex;justify-content:space-around;padding:.4rem 0 calc(env(safe-area-inset-bottom) + .4rem);z-index:20;border-top:1px solid var(--night-2)}
+nav button{background:none;color:var(--sand-2);padding:.4rem .5rem;font-size:.72rem;font-weight:500;border-radius:0;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button span{font-size:1.15rem;line-height:1}
+nav button.on{color:var(--marigold)}
+section.view{display:none}section.view.on{display:block}
+.card{background:#fff;border-radius:var(--r);padding:1rem;margin:.9rem 0;border:1px solid var(--sand-2)}
+.card.night{background:var(--night);color:var(--sand);border:0}
+.card.night h2,.card.night h3{color:var(--marigold)}
+.card.night .muted{color:var(--sand-2)}
+.opt{display:block;width:100%;text-align:left;background:#fff;color:var(--ink);border:1.5px solid var(--sand-2);margin:.4rem 0;font-weight:500;padding:.75rem .9rem}
+.opt.sel{border-color:var(--night);background:var(--night);color:var(--sand)}
+.prog{height:6px;background:var(--sand-2);border-radius:3px;overflow:hidden;margin:.6rem 0}
+.prog i{display:block;height:100%;background:var(--marigold);transition:width .25s}
+.qnum{font-family:Fraunces,serif;font-size:3rem;color:var(--sand-2);line-height:1;float:right;margin-left:.5rem}
+.strip{background:var(--night);color:var(--sand);border-radius:var(--r);padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:.7rem 1rem}
+.strip b{display:block;font-family:Fraunces,serif;font-size:1.6rem;font-weight:500;color:var(--marigold)}
+.strip span{font-size:.8rem;color:var(--sand-2)}
+#map{height:260px;border-radius:var(--r);margin:.7rem 0;border:1px solid var(--sand-2)}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+td,th{padding:.5rem .3rem;border-bottom:1px solid var(--sand-2);text-align:left;vertical-align:top}
+th{font-size:.8rem;color:var(--muted);font-weight:700}
+td.num,th.num{text-align:right;white-space:nowrap}
+td input{padding:.3rem .5rem;text-align:right;width:110px}
+.day{border-left:4px solid var(--marigold);padding-left:.9rem;margin:1.2rem 0}
+.day h3{font-size:1.2rem}
+.item{display:grid;grid-template-columns:56px 1fr auto;gap:.5rem;padding:.5rem 0;border-bottom:1px dashed var(--sand-2)}
+.item .t{font-weight:700;color:var(--teal);font-size:.85rem}
+.item .c{white-space:nowrap;font-weight:700}
+.item .n{display:block;color:var(--muted);font-size:.83rem}
+.chips{display:flex;gap:.45rem;flex-wrap:wrap;margin:.5rem 0}
+.chips a{background:#fff;border:1.5px solid var(--night);color:var(--night);text-decoration:none;padding:.4rem .7rem;border-radius:99px;font-size:.85rem;font-weight:700}
+.chk{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0;border-bottom:1px dashed var(--sand-2)}
+.chk input{width:22px;height:22px;margin-top:2px;flex:none}
+.chk.done{opacity:.55;text-decoration:line-through}
+.stay{padding:.7rem 0;border-bottom:1px solid var(--sand-2)}
+.stay b{font-family:Fraunces,serif;font-size:1.05rem}
+.tag{display:inline-block;background:var(--sand);border-radius:99px;padding:.1rem .55rem;font-size:.75rem;margin-left:.3rem}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 5rem);background:var(--ink);color:#fff;padding:.7rem 1.1rem;border-radius:99px;z-index:50;font-size:.9rem;max-width:90vw}
+.err{background:#FBE9E7;color:var(--err);border:1px solid #F5C6C1;border-radius:var(--r-s);padding:.7rem .9rem;margin:.7rem 0;font-size:.9rem}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--sand-2);border-top-color:var(--marigold);border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle;margin-right:.4rem}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+ul.plain{padding-left:1.1rem;margin:.3rem 0}ul.plain li{margin:.25rem 0}
+.big{font-family:Fraunces,serif;font-size:2.2rem;font-weight:500;color:var(--night)}
+details summary{cursor:pointer;font-weight:700;padding:.4rem 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Safar</h1>
+  <p id="hdrSub">Plan it, drive it, count every rupee.</p>
+</header>
+
+<main>
+
+<!-- ===================== HOME ===================== -->
+<section class="view on" id="v-home">
+  <div class="card night">
+    <h2>Where the trip starts</h2>
+    <p id="homeLoc">Rampura Phul, Bathinda, Punjab</p>
+    <div class="row" style="margin-top:.6rem">
+      <button class="gold" onclick="useGPS()">Use my GPS location</button>
+      <button class="ghost" style="color:var(--sand);border-color:var(--sand)" onclick="resetHome()">Back to Rampura Phul</button>
+    </div>
+    <p class="muted" style="margin-top:.6rem" id="homeWx">Fetching weather…</p>
+  </div>
+
+  <div class="card">
+    <h2>How this works</h2>
+    <ul class="plain">
+      <li><b>Profile</b> — 50 quick taps on how you like to travel. Done once, kept on this phone.</li>
+      <li><b>Trip</b> — 20 questions for this specific trip: where, dates, people, car, stay preference.</li>
+      <li><b>Plan</b> — live weather, real driving distance and fuel cost for your Innova or Baleno, then Claude searches ixigo, RailOne, MakeMyTrip, Airbnb, TripAdvisor, Reddit and news for the destination and writes a day-by-day itinerary with every expense in ₹.</li>
+      <li><b>Go</b> — during the trip: checklist per day, log what you actually spent, compare to plan.</li>
+    </ul>
+    <div class="row">
+      <button onclick="go('profile')" id="btnStartProfile">Start profile</button>
+      <button class="ghost" onclick="go('trip')">Skip to trip</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Quick India cost reference (2026, editable in Settings)</h3>
+    <table id="refTable"></table>
+    <small>Rough city averages. The plan you generate uses live searches on top of these.</small>
+  </div>
+</section>
+
+<!-- ===================== PROFILE (50 Qs) ===================== -->
+<section class="view" id="v-profile">
+  <div class="card" id="profCard"></div>
+</section>
+
+<!-- ===================== TRIP (20 Qs) ===================== -->
+<section class="view" id="v-trip">
+  <div class="card" id="tripCard"></div>
+</section>
+
+<!-- ===================== PLAN ===================== -->
+<section class="view" id="v-plan">
+  <div id="planEmpty" class="card">
+    <h2>No plan yet</h2>
+    <p>Finish the Trip questions, then tap <b>Build my plan</b>. You can rebuild any time — each build costs API tokens, so change answers first, then build once.</p>
+    <button onclick="go('trip')">Go to Trip</button>
+  </div>
+  <div id="planWrap" style="display:none">
+    <div class="strip" id="strip"></div>
+    <div id="map"></div>
+    <div class="card" id="wxCard"></div>
+    <div class="row">
+      <button class="gold" id="btnBuild" onclick="buildPlan()">Build my plan with Claude</button>
+    </div>
+    <div id="planErr"></div>
+    <div id="planOut"></div>
+  </div>
+</section>
+
+<!-- ===================== GO (execute) ===================== -->
+<section class="view" id="v-go">
+  <div class="card" id="goCard"><h2>Nothing to execute yet</h2><p>Build a plan first.</p></div>
+</section>
+
+<!-- ===================== SETTINGS ===================== -->
+<section class="view" id="v-set">
+  <div class="card">
+    <h2>API</h2>
+    <label>Anthropic API key (leave empty when running inside Claude)</label>
+    <input id="sKey" type="password" placeholder="sk-ant-…" autocomplete="off">
+    <label>Model</label>
+    <select id="sModel">
+      <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
+      <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (cheapest)</option>
+      <option value="claude-opus-5">claude-opus-5 (best, costly)</option>
+    </select>
+    <label><input type="checkbox" id="sSearch" checked style="width:auto"> Let Claude search the web (trains, hotels, reviews, news). Off = plan from knowledge only, much cheaper.</label>
+    <label>Max web searches per build</label>
+    <input id="sMaxSearch" type="number" value="8" min="1" max="20">
+  </div>
+  <div class="card">
+    <h2>Cars — running cost</h2>
+    <div class="row">
+      <div><label>Innova Crysta ₹ per km (diesel)</label><input id="sInnova" type="number" value="10"></div>
+      <div><label>Baleno ₹ per km (petrol)</label><input id="sBaleno" type="number" value="6"></div>
+    </div>
+    <label>Toll estimate ₹ per 100 km on highways</label>
+    <input id="sToll" type="number" value="110">
+  </div>
+  <div class="card">
+    <h2>Data</h2>
+    <div class="row">
+      <button class="ghost" onclick="exportData()">Export JSON</button>
+      <button class="ghost" onclick="document.getElementById('imp').click()">Import JSON</button>
+      <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(this)">
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <button class="ghost" onclick="clearAll()" style="color:var(--err);border-color:var(--err)">Erase everything</button>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<nav>
+  <button onclick="go('home')" data-v="home"><span>⌂</span>Home</button>
+  <button onclick="go('profile')" data-v="profile"><span>☰</span>Profile</button>
+  <button onclick="go('trip')" data-v="trip"><span>✈</span>Trip</button>
+  <button onclick="go('plan')" data-v="plan"><span>⚑</span>Plan</button>
+  <button onclick="go('go')" data-v="go"><span>▶</span>Go</button>
+  <button onclick="go('set')" data-v="set"><span>⚙</span>Settings</button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ---------- storage (safe everywhere) ---------- */
+const mem={};
+const store={
+  get(k,d){try{const v=localStorage.getItem('safar:'+k);return v?JSON.parse(v):(k in mem?mem[k]:d)}catch(e){return k in mem?mem[k]:d}},
+  set(k,v){mem[k]=v;try{localStorage.setItem('safar:'+k,JSON.stringify(v))}catch(e){}},
+  del(k){delete mem[k];try{localStorage.removeItem('safar:'+k)}catch(e){}}
+};
+const $=id=>document.getElementById(id);
+const inr=n=>'₹'+Math.round(+n||0).toLocaleString('en-IN');
+function toast(m,ms=2600){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),ms)}
+
+/* ---------- PWA manifest (inline) ---------- */
+(function(){
+  const svg=`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%231B1F3A'/><text x='50%' y='58%' font-family='Georgia,serif' font-size='300' fill='%23F2B134' text-anchor='middle'>S</text></svg>`;
+  const icon='data:image/svg+xml,'+svg;
+  const man={name:'Safar',short_name:'Safar',start_url:location.href,display:'standalone',background_color:'#1B1F3A',theme_color:'#1B1F3A',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml',purpose:'any'}]};
+  $('manifest').href='data:application/manifest+json,'+encodeURIComponent(JSON.stringify(man));
+})();
+
+/* ---------- reference costs ---------- */
+const REF=[['Auto-rickshaw (per km, after ₹30 min)','₹12–15'],['Ola/Uber cab (per km)','₹14–20'],['Outstation taxi (per km, sedan)','₹11–13'],['Outstation taxi (per km, Innova)','₹16–20'],['Self-drive rental (hatchback/day)','₹1,200–2,000'],['Self-drive rental (SUV/day)','₹3,000–5,000'],['Scooter rental (per day)','₹350–600'],['Sleeper train (per 500 km)','₹350–450'],['3AC train (per 500 km)','₹900–1,300'],['Volvo AC bus (per 300 km)','₹700–1,200'],['Budget hotel / homestay (night)','₹1,000–2,000'],['Mid-range hotel (night)','₹2,500–5,000'],['Dhaba meal (per person)','₹120–250'],['Restaurant meal (per person)','₹350–700'],['Monument entry (Indian)','₹25–50']];
+$('refTable').innerHTML=REF.map(r=>`<tr><td>${r[0]}</td><td class="num">${r[1]}</td></tr>`).join('');
+
+/* ---------- 50 profile questions ---------- */
+const PQ=[
+['Trip length you enjoy most',['Weekend (2–3 days)','Short break (4–6 days)','Long (7–12 days)','Two weeks or more']],
+['Daily budget per person (all-in)',['Under ₹1,500','₹1,500–3,000','₹3,000–6,000','Above ₹6,000']],
+['Pace of the day',['Slow, 1–2 things','Balanced, 3–4 things','Packed, see it all','No plan, wander']],
+['Stay type you prefer',['Homestay / guesthouse','Budget hotel','Mid-range hotel','Resort / heritage property']],
+['Stay location',['Right at the attractions','Quiet, 15–30 min away','Cheapest, distance is fine','Near highway for easy exit']],
+['Mornings',['Up before sunrise','Early, by 7','Relaxed, 9-ish','Late starts']],
+['Nights',['Asleep by 10','Evening walks','Night markets / cafés','Nightlife']],
+['Food adventurousness',['Only familiar','Try local staples','Eat what locals eat','Street food anywhere']],
+['Diet',['Vegetarian','Eggetarian','Non-veg','Jain / no onion-garlic']],
+['Meal spend per person',['Dhaba ₹150','Local restaurant ₹300','Good restaurant ₹600','Fine dining']],
+['Tea/coffee stops',['Skip','1 a day','Every 2 hours','Chai is the trip']],
+['Nature',['Mountains','Rivers / lakes','Desert','Beaches']],
+['Weather you prefer',['Cold','Cool / pleasant','Warm','Any']],
+['Heritage',['Gurudwaras & religious sites','Forts & palaces','Museums','Old bazaars']],
+['Culture interest',['High — talks, local guides','Medium','Low','Only food culture']],
+['Adventure',['Trekking','Rafting / water','Camping','None']],
+['Photography',['Serious, want golden hour','Phone snaps','Not bothered','Video/vlog']],
+['Shopping',['Local crafts','Textiles / phulkari','Nothing','Markets just to look']],
+['Crowds',['Avoid completely','OK on weekdays','Don\'t mind','Love festivals']],
+['Driving per day you\'re happy with',['Under 150 km','150–300 km','300–500 km','500+ km']],
+['Driving style',['Highway cruising','Hill roads','Mixed','Off-road / village']],
+['Night driving',['Never','Only if needed','Fine','Prefer night to beat traffic']],
+['Rest stops',['Every 1 hr','Every 2 hr','Every 3 hr','Only fuel stops']],
+['Route preference',['Fastest','Scenic even if longer','Avoid tolls','Mix']],
+['Car for hills',['Innova Crysta','Baleno','Whichever is cheaper','Rent locally']],
+['Fuel planning',['Fill before every leg','Half tank rule','Cheapest state','Don\'t track']],
+['Language comfort',['Punjabi / Hindi only','Hindi anywhere','English-friendly places','Any']],
+['Travel companions usually',['Solo','Partner','Family with kids','Friends group']],
+['Kids on trips',['Never','Sometimes','Always','Elderly parents instead']],
+['Booking style',['Book everything ahead','Book stay only','Book first night only','Walk in']],
+['Booking sites you trust',['MakeMyTrip / Goibibo','Airbnb','Booking.com','Direct / phone']],
+['Train class',['Sleeper','3AC','2AC / 1AC','Chair car / Vande Bharat']],
+['Bus type',['Ordinary PRTC','Volvo AC','Sleeper bus','Avoid buses']],
+['Local transport',['Own car','Auto / cab','Rented scooter','Walk']],
+['Guides',['Hire local guide','Audio guide / app','Read beforehand','No guide']],
+['Health / stamina',['Long walks fine','Moderate','Short distances','Mobility limits']],
+['Altitude',['Fine above 3,000 m','Up to 3,000 m','Under 2,000 m','Avoid hills']],
+['Wi-Fi / work on trip',['Need reliable Wi-Fi','Some work','Fully off','Only phone data']],
+['Sunrise / sunset spots',['Must do','Nice if easy','Skip','Only sunset']],
+['Meditation / spiritual',['Central to trip','Occasional','Not needed','Osho / ashram type']],
+['Music / evenings',['Folk / local music','Quiet','Café scene','Any']],
+['Souvenir budget',['₹0','Under ₹1,000','₹1,000–5,000','Above ₹5,000']],
+['Emergency buffer',['5% of budget','10%','20%','Fixed ₹5,000']],
+['Paying',['Mostly UPI','Cash','Cards','Mix']],
+['Detours',['Never, stick to plan','If under 30 min','Always if interesting','Trip is the detour']],
+['Repeat places',['Prefer new only','Revisit favourites','Mix','Depends on season']],
+['Season',['Winter Dec–Feb','Spring Feb–Apr','Monsoon Jul–Sep','Autumn Oct–Nov']],
+['Festival travel',['Plan around festivals','Avoid festivals','Neutral','Only Baisakhi / Diwali']],
+['Border / remote areas',['Yes, love them','If safe','No','Only with group']],
+['Post-trip',['Want a full expense sheet','Just total','Photos / journal','Nothing']]
+];
+
+/* ---------- 20 trip questions ---------- */
+const TQ=[
+{q:'Where are you going? (city / region)',type:'text',ph:'e.g. Dharamshala, Amritsar, Jaisalmer, Rishikesh'},
+{q:'Or should I suggest destinations instead?',o:['No, I know where','Yes, suggest 3 based on weather + my profile','Suggest but I already have a rough idea']},
+{q:'Start date',type:'date'},
+{q:'End date',type:'date'},
+{q:'How many people?',type:'number',ph:'e.g. 2'},
+{q:'Who are they?',o:['Just me','Couple','Family with kids','Friends','Parents / elderly']},
+{q:'Which car?',o:['Innova Crysta (diesel, ₹10/km)','Baleno (petrol, ₹6/km)','Both — you pick','Train/bus + local cabs instead']},
+{q:'Total budget for the whole trip (₹)',type:'number',ph:'e.g. 25000'},
+{q:'Stay preference for THIS trip',o:['Walking distance to main sights','15–30 min away, quieter & cheaper','Cheapest possible','Show both options and let me decide']},
+{q:'Room needs',o:['1 room','2 rooms','Family suite / cottage','Dorm / hostel fine']},
+{q:'Must-do on this trip',type:'text',ph:'e.g. Golden Temple at 4am, paragliding at Bir'},
+{q:'Definitely avoid',type:'text',ph:'e.g. long treks, crowded temples'},
+{q:'Pace for this trip',o:['Relaxed','Normal','Packed']},
+{q:'Food focus',o:['Local famous places','Cheap & filling','Cafés & views','Mix']},
+{q:'Special diet for this trip',o:['Same as profile','Veg only','Non-veg fine','Jain']},
+{q:'Return the same route?',o:['Yes','Different route back','Don\'t care']},
+{q:'Max driving on any single day (km)',type:'number',ph:'e.g. 400'},
+{q:'Book stays through',o:['MakeMyTrip / Goibibo','Airbnb','Booking.com','Just show all']},
+{q:'Want train/bus options checked too?',o:['Yes, compare with driving','No, driving only','Only for one leg']},
+{q:'Anything else Claude should know',type:'text',ph:'e.g. anniversary trip, dog with us, need EV charging'}
+];
+
+/* ---------- state ---------- */
+let S={
+  home:store.get('home',{name:'Rampura Phul, Bathinda, Punjab',lat:30.2713,lon:75.2401}),
+  prof:store.get('prof',{}), trip:store.get('trip',{}),
+  pi:store.get('pi',0), ti:store.get('ti',0),
+  plan:store.get('plan',null), dest:store.get('dest',null), route:store.get('route',null), wx:store.get('wx',null),
+  done:store.get('done',{}), spent:store.get('spent',[]),
+  set:store.get('set',{key:'',model:'claude-sonnet-4-6',search:true,maxSearch:8,innova:10,baleno:6,toll:110})
+};
+const save=()=>{for(const k of ['home','prof','trip','pi','ti','plan','dest','route','wx','done','spent','set'])store.set(k,S[k])};
+
+/* ---------- nav ---------- */
+function go(v){
+  document.querySelectorAll('section.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  if(v==='profile')renderProfile();if(v==='trip')renderTrip();if(v==='plan')renderPlanView();if(v==='go')renderGo();if(v==='set')renderSet();
+  window.scrollTo(0,0);
+}
+
+/* ---------- location & weather ---------- */
+function showHome(){$('homeLoc').textContent=S.home.name;}
+async function useGPS(){
+  if(!navigator.geolocation)return toast('No GPS on this device');
+  toast('Getting GPS…');
+  navigator.geolocation.getCurrentPosition(async p=>{
+    const {latitude:lat,longitude:lon}=p.coords;let name=`${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+    try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12`).then(r=>r.json());
+      const a=r.address||{};name=[a.town||a.city||a.village||a.county,a.state_district,a.state].filter(Boolean).join(', ')||r.display_name||name}catch(e){}
+    S.home={name,lat,lon};save();showHome();homeWeather();toast('Start point set to '+name);
+  },e=>toast('GPS failed: '+e.message),{enableHighAccuracy:true,timeout:12000});
+}
+function resetHome(){S.home={name:'Rampura Phul, Bathinda, Punjab',lat:30.2713,lon:75.2401};save();showHome();homeWeather();}
+const WCODE={0:'Clear',1:'Mostly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Fog',51:'Drizzle',53:'Drizzle',55:'Drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm',96:'Thunderstorm',99:'Thunderstorm'};
+async function weather(lat,lon,start,end){
+  let u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FKolkata&forecast_days=16`;
+  const r=await fetch(u).then(r=>r.json());const d=r.daily;let out=[];
+  for(let i=0;i<d.time.length;i++){if(start&&d.time[i]<start)continue;if(end&&d.time[i]>end)continue;out.push({date:d.time[i],code:WCODE[d.weathercode[i]]||'—',max:d.temperature_2m_max[i],min:d.temperature_2m_min[i],rain:d.precipitation_probability_max[i]})}
+  return out;
+}
+async function homeWeather(){
+  try{const w=await weather(S.home.lat,S.home.lon);const t=w[0];$('homeWx').textContent=`Today here: ${t.code}, ${Math.round(t.min)}–${Math.round(t.max)}°C, rain chance ${t.rain}%`}catch(e){$('homeWx').textContent='Weather unavailable (offline?)'}
+}
+async function geocode(q){
+  const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en&format=json`).then(r=>r.json());
+  const hits=(r.results||[]).sort((a,b)=>(a.country_code==='IN'?0:1)-(b.country_code==='IN'?0:1));
+  if(!hits.length)throw new Error('Could not find "'+q+'". Try a bigger nearby town.');
+  const h=hits[0];return{name:[h.name,h.admin1].filter(Boolean).join(', '),lat:h.latitude,lon:h.longitude};
+}
+async function osrm(a,b){
+  const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`).then(r=>r.json());
+  if(!r.routes||!r.routes.length)throw new Error('No driving route found');
+  const rt=r.routes[0];return{km:rt.distance/1000,hrs:rt.duration/3600,geo:rt.geometry.coordinates};
+}
+
+/* ---------- questionnaires ---------- */
+function renderProfile(){
+  const i=S.pi,card=$('profCard');
+  if(i>=PQ.length){card.innerHTML=`<h2>Profile complete</h2><p>All 50 answers saved on this phone. Change any answer whenever you like.</p><div class="row"><button onclick="go('trip')">Go to Trip questions</button><button class="ghost" onclick="S.pi=0;save();renderProfile()">Review from start</button></div>`;return}
+  const [q,opts]=PQ[i],cur=S.prof[i];
+  card.innerHTML=`<span class="qnum">${i+1}</span><small>Profile · ${i+1} of ${PQ.length}</small><div class="prog"><i style="width:${i/PQ.length*100}%"></i></div><h2>${q}</h2>
+  ${opts.map(o=>`<button class="opt ${cur===o?'sel':''}" onclick="ansP(${i},this.textContent)">${o}</button>`).join('')}
+  <div class="row" style="margin-top:.8rem"><button class="ghost small" onclick="S.pi=Math.max(0,S.pi-1);save();renderProfile()" ${i===0?'disabled':''}>Back</button><button class="ghost small" onclick="S.pi++;save();renderProfile()">Skip</button><button class="ghost small" onclick="S.pi=PQ.length;save();renderProfile()">Finish early</button></div>`;
+}
+function ansP(i,v){S.prof[i]=v;S.pi=i+1;save();renderProfile()}
+function renderTrip(){
+  const i=S.ti,card=$('tripCard');
+  if(i>=TQ.length){
+    const miss=[];if(!S.trip[0]&&!(S.trip[1]||'').startsWith('Yes'))miss.push('destination');if(!S.trip[2]||!S.trip[3])miss.push('dates');if(!S.trip[4])miss.push('number of people');
+    card.innerHTML=`<h2>Trip questions done</h2>${miss.length?`<div class="err">Still missing: ${miss.join(', ')}. Go back and fill them.</div>`:'<p>Everything needed is here.</p>'}
+    <div class="row"><button class="gold" onclick="prepPlan()" ${miss.length?'disabled':''}>Build my plan</button><button class="ghost" onclick="S.ti=0;save();renderTrip()">Review answers</button></div>
+    <details style="margin-top:.8rem"><summary>Your answers</summary>${TQ.map((t,k)=>`<p><small>${t.q}</small><br>${S.trip[k]||'—'}</p>`).join('')}</details>`;return}
+  const t=TQ[i],cur=S.trip[i]||'';
+  let body='';
+  if(t.o)body=t.o.map(o=>`<button class="opt ${cur===o?'sel':''}" onclick="ansT(${i},this.textContent)">${o}</button>`).join('');
+  else body=`<input id="tin" type="${t.type}" value="${cur.replace(/"/g,'&quot;')}" placeholder="${t.ph||''}" ${t.type==='date'?`min="${today()}"`:''}><button style="margin-top:.6rem;width:100%" onclick="ansT(${i},document.getElementById('tin').value)">Next</button>`;
+  card.innerHTML=`<span class="qnum">${i+1}</span><small>Trip · ${i+1} of ${TQ.length}</small><div class="prog"><i style="width:${i/TQ.length*100}%"></i></div><h2>${t.q}</h2>${body}
+  <div class="row" style="margin-top:.8rem"><button class="ghost small" onclick="S.ti=Math.max(0,S.ti-1);save();renderTrip()" ${i===0?'disabled':''}>Back</button><button class="ghost small" onclick="S.ti++;save();renderTrip()">Skip</button></div>`;
+  const inp=$('tin');if(inp){inp.focus();inp.addEventListener('keydown',e=>{if(e.key==='Enter')ansT(i,inp.value)})}
+}
+function ansT(i,v){S.trip[i]=v;S.ti=i+1;save();renderTrip()}
+const today=()=>new Date().toISOString().slice(0,10);
+
+/* ---------- plan prep: geocode, route, weather ---------- */
+function carInfo(){
+  const c=S.trip[6]||'',s=S.set;
+  if(c.startsWith('Baleno'))return{name:'Baleno',perKm:s.baleno,fuel:'petrol'};
+  if(c.startsWith('Train'))return null;
+  return{name:'Innova Crysta',perKm:s.innova,fuel:'diesel'};
+}
+function fuelCost(km,car){return car?km*car.perKm:0}
+async function prepPlan(){
+  go('plan');$('planEmpty').style.display='none';$('planWrap').style.display='block';
+  $('strip').innerHTML='<div><span class="spin"></span>Finding destination, route and weather…</div>';
+  try{
+    if(S.trip[0]){S.dest=await geocode(S.trip[0]);S.route=await osrm(S.home,S.dest);
+      const days=daysBetween();S.wx=await weather(S.dest.lat,S.dest.lon,S.trip[2],S.trip[3]).catch(()=>[]);
+    }else{S.dest=null;S.route=null;S.wx=[]}
+    save();renderPlanView();
+  }catch(e){$('strip').innerHTML=`<div class="err">${e.message}</div>`}
+}
+function daysBetween(){const a=new Date(S.trip[2]),b=new Date(S.trip[3]);return Math.max(1,Math.round((b-a)/864e5)+1)}
+let map,layer;
+function renderPlanView(){
+  if(!S.dest&&!S.plan){$('planEmpty').style.display='block';$('planWrap').style.display='none';return}
+  $('planEmpty').style.display='none';$('planWrap').style.display='block';
+  const car=carInfo(),rt=S.route,n=+S.trip[4]||1,days=daysBetween();
+  if(rt){const total=rt.km*2,fc=fuelCost(total,car),toll=total/100*S.set.toll;
+    $('strip').innerHTML=`<div><b>${Math.round(rt.km)} km</b><span>one way, ${S.home.name.split(',')[0]} → ${S.dest.name.split(',')[0]}</span></div>
+    <div><b>${rt.hrs.toFixed(1)} h</b><span>driving, no stops</span></div>
+    <div><b>${inr(fc)}</b><span>fuel round trip, ${car?car.name+' @ ₹'+car.perKm+'/km':'no car'}</span></div>
+    <div><b>${inr(toll)}</b><span>tolls estimate · ${days} days · ${n} people</span></div>`;
+    if(!map){map=L.map('map',{scrollWheelZoom:false});L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map)}
+    if(layer)layer.remove();
+    layer=L.layerGroup([L.polyline(rt.geo.map(c=>[c[1],c[0]]),{color:'#F2B134',weight:4}),L.marker([S.home.lat,S.home.lon]).bindPopup('Start: '+S.home.name),L.marker([S.dest.lat,S.dest.lon]).bindPopup(S.dest.name)]).addTo(map);
+    map.fitBounds(L.latLngBounds(rt.geo.map(c=>[c[1],c[0]])),{padding:[20,20]});setTimeout(()=>map.invalidateSize(),200);
+    $('map').style.display='block';
+  }else{$('strip').innerHTML='<div><b>—</b><span>Destination to be suggested by Claude</span></div>';$('map').style.display='none'}
+  const wx=S.wx||[];
+  $('wxCard').innerHTML=wx.length?`<h3>Weather at ${S.dest.name} for your dates</h3><table>${wx.map(w=>`<tr><td>${fmtDate(w.date)}</td><td>${w.code}</td><td class="num">${Math.round(w.min)}–${Math.round(w.max)}°C</td><td class="num">${w.rain}% rain</td></tr>`).join('')}</table>`
+    :`<h3>Weather</h3><p class="muted">${S.dest?'Your dates are beyond the 16-day forecast; Claude will use seasonal norms.':'Pick a destination to see the forecast.'}</p>`;
+  if(S.plan)renderPlan();
+}
+const fmtDate=d=>new Date(d+'T00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+
+/* ---------- Claude ---------- */
+function profileText(){return PQ.map((q,i)=>S.prof[i]?`${q[0]}: ${S.prof[i]}`:null).filter(Boolean).join('\n')}
+function tripText(){return TQ.map((t,i)=>S.trip[i]?`${t.q}: ${S.trip[i]}`:null).filter(Boolean).join('\n')}
+function buildPrompt(){
+  const car=carInfo(),rt=S.route,days=daysBetween(),n=+S.trip[4]||1;
+  const fuel=rt?`Driving distance ${S.home.name} → ${S.dest.name}: ${Math.round(rt.km)} km, ${rt.hrs.toFixed(1)} h one way (OSRM). Round-trip fuel for ${car?car.name:'no car'}: ${inr(fuelCost(rt.km*2,car))} at ${car?'₹'+car.perKm+' per km ('+car.fuel+')':''}. Toll estimate ${inr(rt.km*2/100*S.set.toll)}.`:'No fixed destination yet — suggest 3 and pick the best, with its distance from home.';
+  const wx=(S.wx||[]).map(w=>`${w.date}: ${w.code}, ${Math.round(w.min)}–${Math.round(w.max)}°C, rain ${w.rain}%`).join('\n')||'No forecast (beyond 16 days) — use seasonal norms.';
+  return `You are a meticulous Indian road-trip planner. Today is ${today()}. Currency is Indian rupees only. The traveller drives themselves and enjoys it.
+
+HOME / START: ${S.home.name} (${S.home.lat.toFixed(3)}, ${S.home.lon.toFixed(3)})
+TRIP: ${S.trip[2]} to ${S.trip[3]} (${days} days), ${n} people.
+${fuel}
+
+FORECAST AT DESTINATION:
+${wx}
+
+TRAVELLER PROFILE (50 answers):
+${profileText()}
+
+THIS TRIP (20 answers):
+${tripText()}
+
+${S.set.search?`Use web search to check, for the actual dates: (1) trains from the nearest railway station to home (Rampura Phul / Bathinda / Barnala) and buses (PRTC/Volvo) via ixigo, RailOne/IRCTC, redBus, MakeMyTrip — with class, fare and duration; (2) hotels/homestays on MakeMyTrip, Airbnb, Booking.com, Goibibo — real names, area, approx price/night; (3) famous food places with TripAdvisor/Google/Reddit ratings; (4) 3–4 current news items about the destination that affect a traveller (roads, weather alerts, festivals, closures); (5) entry fees and timings for attractions. Keep searches focused; don't exceed the search budget.`:'Do not search; use your knowledge and say clearly which figures are estimates.'}
+
+Respond with ONLY a JSON object, no markdown fences, no prose before or after, matching exactly:
+{
+ "destination": "final destination name",
+ "why": "2–3 sentences on why this destination and plan fits the profile and weather",
+ "news": ["short current news item relevant to the traveller", "..."],
+ "transport": {
+   "drive": "verdict on driving vs train/bus with reasoning, hill-road cautions, best departure time",
+   "train": [{"name":"train name/number","from":"","to":"","dep":"","arr":"","class":"","fare":0,"note":""}],
+   "bus": [{"operator":"","from":"","to":"","dep":"","duration":"","fare":0,"note":""}],
+   "local": "how to get around at the destination and typical costs (auto/cab/scooter/parking)"
+ },
+ "stays": [{"name":"","area":"","type":"","pricePerNight":0,"distanceToMainSights":"e.g. 500 m walk / 20 min drive","near":true,"why":"","site":"MakeMyTrip|Airbnb|Booking.com|direct"}],
+ "food": [{"name":"","area":"","famousFor":"","costPerPerson":0,"rating":"4.5 Google / 4.0 TripAdvisor","note":""}],
+ "days": [{"date":"YYYY-MM-DD","title":"","drivingKm":0,"items":[{"time":"07:00","activity":"","cost":0,"note":"tips, booking, what to order"}],"dayCost":0}],
+ "expenses": {"fuel":0,"tolls":0,"parking":0,"localTransport":0,"stay":0,"food":0,"activities":0,"shopping":0,"buffer":0,"total":0},
+ "packing": ["..."],
+ "tips": ["..."]
+}
+Rules: include ${days} day objects, one per date from ${S.trip[2]} to ${S.trip[3]}. Costs are for all ${n} people combined, in ₹, realistic for 2026. Mark stays with near=true if walking distance to main sights, near=false if 15+ min away — include at least two of each so the traveller can choose. Include 5–8 food places. Include at least 6 items per day with times. dayCost must equal the sum of that day's item costs. expenses.total must equal the sum of all expense fields.`;
+}
+async function callClaude(prompt){
+  const s=S.set,h={'Content-Type':'application/json'};
+  if(s.key){h['x-api-key']=s.key;h['anthropic-version']='2023-06-01';h['anthropic-dangerous-direct-browser-access']='true'}
+  const body={model:s.model,max_tokens:8000,messages:[{role:'user',content:prompt}]};
+  if(s.search)body.tools=[{type:'web_search_20250305',name:'web_search',max_uses:+s.maxSearch||8}];
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:h,body:JSON.stringify(body)});
+  const data=await r.json();
+  if(data.error)throw new Error(data.error.message||JSON.stringify(data.error));
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  const usage=data.usage||{};
+  return{text,usage};
+}
+function parseJSON(t){
+  let s=t.replace(/```json|```/g,'').trim();const a=s.indexOf('{'),b=s.lastIndexOf('}');if(a<0||b<0)throw new Error('Claude did not return JSON. Try again or lower max searches.');
+  return JSON.parse(s.slice(a,b+1));
+}
+async function buildPlan(){
+  const b=$('btnBuild');b.disabled=true;b.innerHTML='<span class="spin"></span>Searching and planning… 1–3 min';$('planErr').innerHTML='';
+  try{
+    const {text,usage}=await callClaude(buildPrompt());
+    const plan=parseJSON(text);plan.usage=usage;plan.built=new Date().toISOString();
+    S.plan=plan;S.done={};save();
+    if(!S.dest&&plan.destination){try{S.dest=await geocode(plan.destination);S.route=await osrm(S.home,S.dest);S.wx=await weather(S.dest.lat,S.dest.lon,S.trip[2],S.trip[3]).catch(()=>[]);save()}catch(e){}}
+    renderPlanView();toast('Plan ready');
+  }catch(e){$('planErr').innerHTML=`<div class="err">${e.message}</div>`}
+  b.disabled=false;b.textContent='Rebuild plan with Claude';
+}
+
+/* ---------- render plan ---------- */
+function links(){
+  const d=encodeURIComponent(S.plan?.destination||S.trip[0]||''),h=encodeURIComponent(S.home.name.split(',')[0]);
+  const ci=S.trip[2]||'',co=S.trip[3]||'',n=+S.trip[4]||1;
+  return `<div class="chips">
+  <a target="_blank" rel="noopener" href="https://www.ixigo.com/trains">ixigo trains</a>
+  <a target="_blank" rel="noopener" href="https://railone.irctc.co.in/">RailOne</a>
+  <a target="_blank" rel="noopener" href="https://www.redbus.in/">redBus</a>
+  <a target="_blank" rel="noopener" href="https://www.makemytrip.com/hotels/">MakeMyTrip</a>
+  <a target="_blank" rel="noopener" href="https://www.airbnb.co.in/s/${d}/homes?checkin=${ci}&checkout=${co}&adults=${n}">Airbnb</a>
+  <a target="_blank" rel="noopener" href="https://www.booking.com/searchresults.html?ss=${d}&checkin=${ci}&checkout=${co}&group_adults=${n}">Booking.com</a>
+  <a target="_blank" rel="noopener" href="https://www.tripadvisor.in/Search?q=${d}">TripAdvisor</a>
+  <a target="_blank" rel="noopener" href="https://www.reddit.com/search/?q=${d}+trip">Reddit</a>
+  <a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&origin=${h}&destination=${d}&travelmode=driving">Google Maps route</a>
+  <a target="_blank" rel="noopener" href="https://news.google.com/search?q=${d}">News</a>
+  </div>`;
+}
+function renderPlan(){
+  const p=S.plan,ex=p.expenses||{},n=+S.trip[4]||1;
+  const exRows=Object.keys(ex).filter(k=>k!=='total').map(k=>`<tr><td>${k.replace(/([A-Z])/g,' $1').toLowerCase()}</td><td class="num"><input type="number" value="${Math.round(ex[k]||0)}" onchange="editEx('${k}',this.value)"></td></tr>`).join('');
+  const total=Object.keys(ex).filter(k=>k!=='total').reduce((a,k)=>a+(+ex[k]||0),0);
+  $('planOut').innerHTML=`
+  <div class="card night"><h2>${p.destination}</h2><p>${p.why||''}</p><small>Built ${new Date(p.built).toLocaleString('en-IN')}${p.usage?` · ${p.usage.input_tokens||0} in / ${p.usage.output_tokens||0} out tokens`:''}</small></div>
+  ${links()}
+  ${(p.news||[]).length?`<div class="card"><h3>Right now at ${p.destination}</h3><ul class="plain">${p.news.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
+  <div class="card"><h3>Total for the trip</h3><div class="big">${inr(total)}</div><small>${inr(total/n)} per person · ${daysBetween()} days · edit any line, total updates</small>
+  <table style="margin-top:.6rem">${exRows}</table></div>
+  <div class="card"><h3>Getting there</h3><p>${p.transport?.drive||''}</p>
+  ${(p.transport?.train||[]).length?`<h3 style="margin-top:.8rem">Trains</h3><table><tr><th>Train</th><th>Time</th><th>Class</th><th class="num">Fare</th></tr>${p.transport.train.map(t=>`<tr><td>${t.name}<br><small>${t.from} → ${t.to} ${t.note||''}</small></td><td>${t.dep}–${t.arr}</td><td>${t.class}</td><td class="num">${inr(t.fare)}</td></tr>`).join('')}</table>`:''}
+  ${(p.transport?.bus||[]).length?`<h3 style="margin-top:.8rem">Buses</h3><table><tr><th>Operator</th><th>Dep</th><th>Time</th><th class="num">Fare</th></tr>${p.transport.bus.map(t=>`<tr><td>${t.operator}<br><small>${t.from} → ${t.to} ${t.note||''}</small></td><td>${t.dep}</td><td>${t.duration}</td><td class="num">${inr(t.fare)}</td></tr>`).join('')}</table>`:''}
+  <p style="margin-top:.8rem"><b>Getting around:</b> ${p.transport?.local||''}</p></div>
+  <div class="card"><h3>Where to stay</h3><small>Tap one to make it your pick.</small>
+  ${(p.stays||[]).map((s,i)=>`<div class="stay" onclick="pickStay(${i})" style="cursor:pointer;${p.pickedStay===i?'background:var(--sand);margin:0 -1rem;padding:.7rem 1rem':''}"><b>${s.name}</b><span class="tag">${s.near?'near sights':'further out'}</span><span class="tag">${s.site||''}</span><br><small>${s.area} · ${s.type} · ${s.distanceToMainSights}</small><br>${inr(s.pricePerNight)}/night — ${s.why}${p.pickedStay===i?' <b>✓ picked</b>':''}</div>`).join('')}</div>
+  <div class="card"><h3>Eat here</h3>${(p.food||[]).map(f=>`<div class="stay"><b>${f.name}</b><br><small>${f.area} · ${f.rating||''}</small><br>${f.famousFor} — ${inr(f.costPerPerson)}/person${f.note?`<br><small>${f.note}</small>`:''}</div>`).join('')}</div>
+  <div class="card"><h2>Day by day</h2>${(p.days||[]).map((d,i)=>`<div class="day"><h3>Day ${i+1} · ${fmtDate(d.date)}</h3><p><b>${d.title}</b>${d.drivingKm?` · ${d.drivingKm} km driving`:''}</p>
+  ${(d.items||[]).map(it=>`<div class="item"><span class="t">${it.time}</span><span>${it.activity}${it.note?`<span class="n">${it.note}</span>`:''}</span><span class="c">${it.cost?inr(it.cost):''}</span></div>`).join('')}
+  <p style="text-align:right"><b>Day total ${inr(d.dayCost)}</b></p></div>`).join('')}</div>
+  ${(p.packing||[]).length?`<div class="card"><h3>Pack</h3><ul class="plain">${p.packing.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
+  ${(p.tips||[]).length?`<div class="card"><h3>Tips</h3><ul class="plain">${p.tips.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
+  <div class="row"><button onclick="go('go')">Start executing this trip</button><button class="ghost" onclick="sharePlan()">Share / copy plan</button></div>`;
+}
+function editEx(k,v){S.plan.expenses[k]=+v||0;save();renderPlan()}
+function pickStay(i){S.plan.pickedStay=i;const s=S.plan.stays[i];S.plan.expenses.stay=Math.round((s.pricePerNight||0)*Math.max(1,daysBetween()-1));save();renderPlan();toast('Stay cost updated for '+s.name)}
+function planText(){
+  const p=S.plan;if(!p)return'';let t=`SAFAR — ${p.destination}\n${S.trip[2]} to ${S.trip[3]} · ${S.trip[4]} people\n\n`;
+  (p.days||[]).forEach((d,i)=>{t+=`DAY ${i+1} ${d.date} — ${d.title}\n`;(d.items||[]).forEach(it=>t+=`  ${it.time} ${it.activity}${it.cost?' ₹'+it.cost:''}\n`);t+=`  Day total ₹${d.dayCost}\n\n`});
+  t+='EXPENSES\n';Object.entries(p.expenses||{}).forEach(([k,v])=>t+=`  ${k}: ₹${v}\n`);return t;
+}
+async function sharePlan(){const t=planText();if(navigator.share){try{await navigator.share({title:'Safar plan',text:t});return}catch(e){}}try{await navigator.clipboard.writeText(t);toast('Copied')}catch(e){toast('Copy failed')}}
+
+/* ---------- execute ---------- */
+function renderGo(){
+  const p=S.plan,c=$('goCard');if(!p){c.innerHTML='<h2>Nothing to execute yet</h2><p>Build a plan first.</p><button onclick="go(\'plan\')">Go to Plan</button>';return}
+  const planned=Object.keys(p.expenses||{}).filter(k=>k!=='total').reduce((a,k)=>a+(+p.expenses[k]||0),0);
+  const spent=S.spent.reduce((a,x)=>a+x.amt,0);
+  const t=today();const todayIdx=(p.days||[]).findIndex(d=>d.date===t);
+  c.innerHTML=`<h2>${p.destination}</h2>
+  <div class="strip" style="margin:.7rem 0"><div><b>${inr(spent)}</b><span>spent so far</span></div><div><b>${inr(planned-spent)}</b><span>${planned-spent>=0?'left of plan':'over plan'}</span></div></div>
+  <h3>Log an expense</h3>
+  <div class="row"><input id="spAmt" type="number" placeholder="₹" style="flex:1"><select id="spCat" style="flex:1.4">${['fuel','tolls','parking','localTransport','stay','food','activities','shopping','other'].map(k=>`<option>${k}</option>`).join('')}</select></div>
+  <div class="row" style="margin-top:.5rem"><input id="spNote" placeholder="note (e.g. diesel Bathinda 40 L)"><button class="gold" onclick="addSpend()">Add</button></div>
+  ${S.spent.length?`<table style="margin-top:.6rem">${S.spent.slice().reverse().map((x,i)=>`<tr><td><small>${x.date}</small><br>${x.cat}${x.note?' — '+x.note:''}</td><td class="num">${inr(x.amt)}</td><td class="num"><button class="small ghost" onclick="delSpend(${S.spent.length-1-i})">✕</button></td></tr>`).join('')}</table>`:''}
+  ${renderCompare(planned)}
+  <h3 style="margin-top:1rem">Checklist</h3>
+  ${(p.days||[]).map((d,di)=>`<details ${di===todayIdx||(todayIdx<0&&di===0)?'open':''}><summary>Day ${di+1} · ${fmtDate(d.date)} — ${d.title}</summary>
+  ${(d.items||[]).map((it,ii)=>{const k=di+'-'+ii,on=!!S.done[k];return`<label class="chk ${on?'done':''}" style="font-weight:500;margin:0"><input type="checkbox" ${on?'checked':''} onchange="S.done['${k}']=this.checked;save();renderGo()"><span><b>${it.time}</b> ${it.activity}${it.cost?` · ${inr(it.cost)}`:''}</span></label>`}).join('')}</details>`).join('')}
+  ${links()}`;
+}
+function renderCompare(planned){
+  const cats={};S.spent.forEach(x=>cats[x.cat]=(cats[x.cat]||0)+x.amt);const ex=S.plan.expenses||{};
+  const keys=[...new Set([...Object.keys(ex).filter(k=>k!=='total'),...Object.keys(cats)])];
+  return`<h3 style="margin-top:1rem">Plan vs actual</h3><table><tr><th></th><th class="num">Plan</th><th class="num">Actual</th></tr>${keys.map(k=>`<tr><td>${k}</td><td class="num">${inr(ex[k]||0)}</td><td class="num" style="color:${(cats[k]||0)>(ex[k]||0)?'var(--err)':'var(--ok)'}">${inr(cats[k]||0)}</td></tr>`).join('')}</table>`;
+}
+function addSpend(){const amt=+$('spAmt').value;if(!amt)return toast('Enter an amount');S.spent.push({date:today(),cat:$('spCat').value,note:$('spNote').value,amt});save();renderGo();toast('Logged '+inr(amt))}
+function delSpend(i){S.spent.splice(i,1);save();renderGo()}
+
+/* ---------- settings ---------- */
+function renderSet(){const s=S.set;$('sKey').value=s.key||'';$('sModel').value=s.model;$('sSearch').checked=!!s.search;$('sMaxSearch').value=s.maxSearch;$('sInnova').value=s.innova;$('sBaleno').value=s.baleno;$('sToll').value=s.toll}
+['sKey','sModel','sSearch','sMaxSearch','sInnova','sBaleno','sToll'].forEach(id=>$(id).addEventListener('change',()=>{
+  S.set={key:$('sKey').value.trim(),model:$('sModel').value,search:$('sSearch').checked,maxSearch:+$('sMaxSearch').value||8,innova:+$('sInnova').value||10,baleno:+$('sBaleno').value||6,toll:+$('sToll').value||110};save();toast('Saved')}));
+function exportData(){const blob=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='safar-'+today()+'.json';a.click()}
+function importData(inp){const f=inp.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);S={...S,...d};save();toast('Imported');go('home');showHome()}catch(e){toast('Bad file')}})}
+function clearAll(){if(!confirm('Erase profile, trip, plan and expenses?'))return;['home','prof','trip','pi','ti','plan','dest','route','wx','done','spent','set'].forEach(k=>store.del(k));location.reload()}
+
+/* ---------- init ---------- */
+showHome();homeWeather();
+if(Object.keys(S.prof).length)$('btnStartProfile').textContent='Continue profile';
+if(S.plan)$('hdrSub').textContent=`Next up: ${S.plan.destination}`;
+</script>
+</body>
+</html>
