@@ -480,20 +480,38 @@ Respond with ONLY a JSON object, no markdown fences, no prose before or after, m
 }
 Rules: include ${days} day objects, one per date from ${S.trip[2]} to ${S.trip[3]}. Costs are for all ${n} people combined, in ₹, realistic for 2026. Mark stays with near=true if walking distance to main sights, near=false if 15+ min away — include at least two of each so the traveller can choose. Include 5–8 food places. Include 5–7 items per day with times; keep every note under 20 words; packing max 8 items, tips max 6. dayCost must equal the sum of that day's item costs. expenses.total must equal the sum of all expense fields.`;
 }
-async function callClaude(prompt){
+async function streamOnce(h,body,onText){
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:h,body:JSON.stringify({...body,stream:true})});
+  if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).error?.message||m}catch(e){}throw new Error(m)}
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf='',text='',stop=null,usage={input_tokens:0,output_tokens:0};
+  try{while(true){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    const lines=buf.split('\n');buf=lines.pop();
+    for(const ln of lines){if(!ln.startsWith('data:'))continue;let ev;try{ev=JSON.parse(ln.slice(5))}catch(e){continue}
+      if(ev.type==='content_block_delta'&&ev.delta?.type==='text_delta'){text+=ev.delta.text;onText(text)}
+      else if(ev.type==='message_start'){usage.input_tokens+=ev.message?.usage?.input_tokens||0}
+      else if(ev.type==='message_delta'){stop=ev.delta?.stop_reason||stop;usage.output_tokens+=ev.usage?.output_tokens||0}
+      else if(ev.type==='error')throw new Error(ev.error?.message||'stream error')}}}catch(e){e.partial=text;throw e}
+  return{text,stop,usage};
+}
+async function callClaude(prompt,onProgress){
   const s=S.set,h={'Content-Type':'application/json'};
   if(s.key){h['x-api-key']=s.key;h['anthropic-version']='2023-06-01';h['anthropic-dangerous-direct-browser-access']='true'}
-  const msgs=[{role:'user',content:prompt}];let text='',usage={input_tokens:0,output_tokens:0};
-  for(let round=0;round<4;round++){
+  const msgs=[{role:'user',content:prompt}];let text='',usage={input_tokens:0,output_tokens:0},netFails=0;
+  for(let round=0;round<6;round++){
     const body={model:s.model,max_tokens:16000,messages:msgs};
     if(s.search&&round===0)body.tools=[{type:'web_search_20250305',name:'web_search',max_uses:+s.maxSearch||8}];
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:h,body:JSON.stringify(body)});
-    const data=await r.json();
-    if(data.error)throw new Error(data.error.message||JSON.stringify(data.error));
-    const part=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-    text+=part;usage.input_tokens+=data.usage?.input_tokens||0;usage.output_tokens+=data.usage?.output_tokens||0;
-    if(data.stop_reason!=='max_tokens')break;
-    msgs.push({role:'assistant',content:text},{role:'user',content:'Your JSON was cut off. Continue EXACTLY from the last character you wrote, outputting only the remaining JSON. No repetition, no fences, no commentary.'});
+    let res;
+    try{res=await streamOnce(h,body,t=>onProgress&&onProgress(text.length+t.length))}
+    catch(e){
+      const net=/fetch|network|load failed|stream|body/i.test(e.message);
+      if(!net||++netFails>3)throw new Error(net?'Connection dropped 3 times. Check signal, or turn off web search in Settings and rebuild.':e.message);
+      await new Promise(r=>setTimeout(r,1500*netFails));
+      res={text:e.partial||'',stop:'max_tokens',usage:{input_tokens:0,output_tokens:0}};
+    }
+    text+=res.text;usage.input_tokens+=res.usage.input_tokens;usage.output_tokens+=res.usage.output_tokens;
+    if(res.stop&&res.stop!=='max_tokens')break;
+    if(!text.trim()){msgs.length=1;continue}
+    msgs.length=1;msgs.push({role:'assistant',content:text},{role:'user',content:'Your JSON was cut off. Continue EXACTLY from the last character you wrote, outputting only the remaining JSON. No repetition, no fences, no commentary.'});
   }
   return{text,usage};
 }
@@ -520,7 +538,7 @@ function parseJSON(t){
 async function buildPlan(){
   const b=$('btnBuild');b.disabled=true;b.innerHTML='<span class="spin"></span>Searching and planning… 1–3 min';$('planErr').innerHTML='';
   try{
-    const {text,usage}=await callClaude(buildPrompt());
+    const {text,usage}=await callClaude(buildPrompt(),n=>{b.innerHTML='<span class="spin"></span>Planning… '+Math.round(n/1000)+'k chars received'});
     const plan=parseJSON(text);plan.usage=usage;plan.built=new Date().toISOString();
     S.plan=plan;S.done={};save();
     if(!S.dest&&plan.destination){try{S.dest=await geocode(plan.destination);S.route=await osrm(S.home,S.dest);S.wx=await weather(S.dest.lat,S.dest.lon,S.trip[2],S.trip[3]).catch(()=>[]);save()}catch(e){}}
