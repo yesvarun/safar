@@ -449,7 +449,10 @@ function ctx(){
   const fuel=rt?`Driving ${S.home.name} → ${S.dest.name}: ${Math.round(rt.km)} km, ${rt.hrs.toFixed(1)} h one way. Round-trip fuel ${inr(fuelCost(rt.km*2,car))} (${car?car.name+' @ ₹'+car.perKm+'/km':'no car'}), tolls ~${inr(rt.km*2/100*S.set.toll)}.`:'No fixed destination — suggest the single best one for this profile, weather and dates, with distance from home.';
   const wx=(S.wx||[]).map(w=>`${w.date}: ${w.code}, ${Math.round(w.min)}–${Math.round(w.max)}°C, rain ${w.rain}%`).join('\n')||'No forecast (beyond 16 days) — use seasonal norms.';
   return `Today ${today()}. Currency ₹ only. Traveller drives themselves and enjoys it.
-HOME: ${S.home.name}. TRIP: ${S.trip[2]} to ${S.trip[3]} (${days} days), ${n} people.
+HOME: ${S.home.name}. TRIP: ${S.trip[2]} to ${S.trip[3]} (${days} days), ${n} people travelling TOGETHER in ONE car (5 seats${n>5?' — more than 5 people, so flag that a second vehicle is needed':''}).
+COST RULES (strict): fuel, tolls, parking and the room are SHARED — count them ONCE for the group, never per person. Only food, entry tickets, activities and personal items scale with headcount. ${n===2?'This is a couple: one room, one car.':''}
+NAMING RULES (strict): name real, specific places — the actual restaurant, dhaba, hotel, fuel station brand and locality (e.g. "HP pump, Goniana Road, Bathinda" or "any pump at Bathinda bypass"), viewpoint, parking lot. Never invent generic names like "Bathinda Petrol Pump" or "Local Restaurant". If unsure of a name, say "any X in <locality>".
+FOOD RULES (strict): never repeat a restaurant, dhaba or street stall across the trip — every meal a different place; vary cuisine too. Whenever a non-veg place is recommended, give a veg dish or a nearby veg alternative in the same line. Only recommend places rated 4.2+ on Google or well-liked on Reddit; show the rating.
 ${fuel}
 FORECAST AT DESTINATION:
 ${wx}
@@ -462,27 +465,28 @@ function researchPrompt(){
   const n=+S.trip[4]||1;
   return `${ctx()}
 
-${S.set.search?'Use web search (stay within the search budget) to check for the actual dates: trains from Bathinda/Rampura Phul/Barnala and buses (PRTC/Volvo) via ixigo, RailOne, redBus, MakeMyTrip; real hotels/homestays on MakeMyTrip, Airbnb, Booking.com with price/night; famous food places with ratings; 3–4 current news items affecting a traveller (roads, alerts, festivals, closures); entry fees.':'Do not search; use knowledge and flag estimates.'}
+${S.set.search?'Use web search (stay within the search budget). Search Reddit FIRST (r/india, r/IndiaTravel, r/delhi, r/punjab, city subreddits) for real traveller recommendations, then Google reviews. Check for the actual dates: trains from Bathinda/Rampura Phul/Barnala and buses (PRTC/Volvo) via ixigo, RailOne, redBus, MakeMyTrip; real hotels/homestays on MakeMyTrip, Airbnb, Booking.com with price/night for ONE room; food places with Google rating and Reddit mentions; 3–4 current news items affecting a traveller (roads, alerts, festivals, closures); entry fees.':'Do not search; use knowledge and flag estimates.'}
 
 Respond with ONLY compact JSON, no fences, no prose:
 {"destination":"","why":"2 sentences",
 "news":["short item"],
 "transport":{"drive":"driving vs train/bus verdict, hill cautions, best departure time","train":[{"name":"","from":"","to":"","dep":"","arr":"","class":"","fare":0,"note":""}],"bus":[{"operator":"","from":"","to":"","dep":"","duration":"","fare":0,"note":""}],"local":"getting around + costs"},
 "stays":[{"name":"","area":"","type":"","pricePerNight":0,"distanceToMainSights":"","near":true,"why":"","site":""}],
-"food":[{"name":"","area":"","famousFor":"","costPerPerson":0,"rating":"","note":""}],
+"food":[{"name":"","area":"","famousFor":"","vegOption":"veg dish here or nearby veg place","costPerPerson":0,"rating":"4.4 Google · praised on Reddit","source":"reddit/google","note":""}],
 "expenses":{"parking":0,"localTransport":0,"stay":0,"food":0,"activities":0,"shopping":0,"buffer":0},
 "packing":["max 8"],"tips":["max 6"]}
-Rules: max 3 trains, 3 buses, 4 stays (2 near=true, 2 near=false), 6 food places. Costs for all ${n} people combined, whole trip, realistic 2026. Notes under 15 words.`;
+Rules: max 3 trains, 3 buses, 4 stays (2 near=true, 2 near=false, pricePerNight for ONE room for the group). Food: ${Math.min(14,Math.max(8,daysBetween()*3))} DIFFERENT places — enough for breakfast/lunch/dinner without repeats, mix of famous restaurants, dhabas, street food, at least a third pure-veg. Expenses are group totals for the whole trip with shared items counted once. Notes under 15 words.`;
 }
+function usedPlaces(){const u=new Set();(S.plan.days||[]).forEach(d=>(d.items||[]).forEach(i=>{const m=/(?:at|@)\s+([A-Z][^,.;(]{3,40})/.exec(i.activity||'');if(m)u.add(m[1].trim());if(i.place)u.add(i.place)}));return [...u]}
 function daysPrompt(dates){
-  const p=S.plan,n=+S.trip[4]||1;
+  const p=S.plan,n=+S.trip[4]||1,used=usedPlaces();
   const brief=`DESTINATION: ${p.destination}. STAY OPTIONS: ${(p.stays||[]).map(s=>s.name+' ('+s.area+')').join('; ')}. FOOD: ${(p.food||[]).map(f=>f.name+' — '+f.famousFor).join('; ')}. LOCAL TRANSPORT: ${p.transport?.local||''}. ROUTE VERDICT: ${p.transport?.drive||''}.`;
   return `${ctx()}
 ${brief}
 Whole trip runs ${S.trip[2]} to ${S.trip[3]}. Write ONLY the days ${dates.join(', ')} (first day starts from home if it is ${S.trip[2]}; last day returns home if it is ${S.trip[3]}).
 Respond with ONLY compact JSON, no fences:
-{"days":[{"date":"YYYY-MM-DD","title":"","drivingKm":0,"items":[{"time":"07:00","activity":"","cost":0,"note":"under 15 words"}],"dayCost":0}]}
-Rules: exactly ${dates.length} day objects in date order; 5–7 items each with times; costs for all ${n} people in ₹; dayCost = sum of item costs.`;
+{"days":[{"date":"YYYY-MM-DD","title":"","drivingKm":0,"items":[{"time":"07:00","activity":"","place":"specific named place or empty","cost":0,"note":"under 15 words; for meals include veg option"}],"dayCost":0}]}
+Rules: exactly ${dates.length} day objects in date order; 5–7 items each with times; every meal at a DIFFERENT named place taken from the FOOD list or another well-rated place; ${used.length?'these places are ALREADY USED on other days — do NOT use them again: '+used.join('; ')+'.':''} Fuel stops: name the pump brand and locality. Item costs are what the GROUP pays at that moment (a room or fuel fill counted once, tickets × ${n}); dayCost = sum of item costs. Do not put the room cost in more than one day.`;
 }
 async function streamOnce(h,body,onText){
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:h,body:JSON.stringify({...body,stream:true})});
@@ -678,8 +682,10 @@ function links(){
   <a target="_blank" rel="noopener" href="https://www.reddit.com/search/?q=${d}+trip">Reddit</a>
   <a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&origin=${h}&destination=${d}&travelmode=driving">Google Maps route</a>
   <a target="_blank" rel="noopener" href="https://news.google.com/search?q=${d}">News</a>
+  <a target="_blank" rel="noopener" href="https://www.mappls.com/${d}">Mappls</a>
   </div>`;
 }
+function placeLinks(name,city){const q=encodeURIComponent(name+' '+(city||''));return `<small><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}" onclick="event.stopPropagation()">Maps</a> · <a target="_blank" rel="noopener" href="https://www.mappls.com/${q}" onclick="event.stopPropagation()">Mappls</a> · <a target="_blank" rel="noopener" href="https://www.reddit.com/search/?q=${q}" onclick="event.stopPropagation()">Reddit</a></small>`}
 function renderPlan(){
   const p=S.plan,ex=p.expenses||{},n=+S.trip[4]||1;
   const exRows=Object.keys(ex).filter(k=>k!=='total').map(k=>`<tr><td>${k.replace(/([A-Z])/g,' $1').toLowerCase()}</td><td class="num"><input type="number" value="${Math.round(ex[k]||0)}" onchange="editEx('${k}',this.value)"></td></tr>`).join('');
@@ -695,10 +701,10 @@ function renderPlan(){
   ${(p.transport?.bus||[]).length?`<h3 style="margin-top:.8rem">Buses</h3><table><tr><th>Operator</th><th>Dep</th><th>Time</th><th class="num">Fare</th></tr>${p.transport.bus.map(t=>`<tr><td>${t.operator}<br><small>${t.from} → ${t.to} ${t.note||''}</small></td><td>${t.dep}</td><td>${t.duration}</td><td class="num">${inr(t.fare)}</td></tr>`).join('')}</table>`:''}
   <p style="margin-top:.8rem"><b>Getting around:</b> ${p.transport?.local||''}</p></div>
   <div class="card"><h3>Where to stay</h3><small>Tap one to make it your pick.</small>
-  ${(p.stays||[]).map((s,i)=>`<div class="stay" onclick="pickStay(${i})" style="cursor:pointer;${p.pickedStay===i?'background:var(--sand);margin:0 -1rem;padding:.7rem 1rem':''}"><b>${s.name}</b><span class="tag">${s.near?'near sights':'further out'}</span><span class="tag">${s.site||''}</span><br><small>${s.area} · ${s.type} · ${s.distanceToMainSights}</small><br>${inr(s.pricePerNight)}/night — ${s.why}${p.pickedStay===i?' <b>✓ picked</b>':''}</div>`).join('')}</div>
-  <div class="card"><h3>Eat here</h3>${(p.food||[]).map(f=>`<div class="stay"><b>${f.name}</b><br><small>${f.area} · ${f.rating||''}</small><br>${f.famousFor} — ${inr(f.costPerPerson)}/person${f.note?`<br><small>${f.note}</small>`:''}</div>`).join('')}</div>
+  ${(p.stays||[]).map((s,i)=>`<div class="stay" onclick="pickStay(${i})" style="cursor:pointer;${p.pickedStay===i?'background:var(--sand);margin:0 -1rem;padding:.7rem 1rem':''}"><b>${s.name}</b><span class="tag">${s.near?'near sights':'further out'}</span><span class="tag">${s.site||''}</span><br><small>${s.area} · ${s.type} · ${s.distanceToMainSights}</small><br>${inr(s.pricePerNight)}/night (one room) — ${s.why}${p.pickedStay===i?' <b>✓ picked</b>':''}<br>${placeLinks(s.name,p.destination)}</div>`).join('')}</div>
+  <div class="card"><h3>Eat here</h3><small>Each place used once across the trip.</small>${(p.food||[]).map(f=>`<div class="stay"><b>${f.name}</b><br><small>${f.area} · ${f.rating||''}</small><br>${f.famousFor} — ${inr(f.costPerPerson)}/person${f.vegOption?`<br><small>🌱 ${f.vegOption}</small>`:''}${f.note?`<br><small>${f.note}</small>`:''}<br>${placeLinks(f.name,p.destination)}</div>`).join('')}</div>
   <div class="card"><h2>Day by day</h2>${!p.complete?'<p class="muted">Some days still missing — tap Resume above.</p>':''}${(p.days||[]).map((d,i)=>`<div class="day"><h3>Day ${i+1} · ${fmtDate(d.date)}</h3><p><b>${d.title}</b>${d.drivingKm?` · ${d.drivingKm} km driving`:''}</p>
-  ${(d.items||[]).map(it=>`<div class="item"><span class="t">${it.time}</span><span>${it.activity}${it.note?`<span class="n">${it.note}</span>`:''}</span><span class="c">${it.cost?inr(it.cost):''}</span></div>`).join('')}
+  ${(d.items||[]).map(it=>`<div class="item"><span class="t">${it.time}</span><span>${it.activity}${it.place?` <small>· ${it.place}</small>`:''}${it.note?`<span class="n">${it.note}</span>`:''}</span><span class="c">${it.cost?inr(it.cost):''}</span></div>`).join('')}
   <p style="text-align:right"><b>Day total ${inr(d.dayCost)}</b></p></div>`).join('')}</div>
   ${(p.packing||[]).length?`<div class="card"><h3>Pack</h3><ul class="plain">${p.packing.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
   ${(p.tips||[]).length?`<div class="card"><h3>Tips</h3><ul class="plain">${p.tips.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
